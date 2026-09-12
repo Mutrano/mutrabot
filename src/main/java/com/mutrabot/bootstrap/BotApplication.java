@@ -6,6 +6,8 @@ import com.mutrabot.adapter.out.audio.LavaplayerPlaybackAdapter;
 import com.mutrabot.adapter.out.audio.LavaplayerResolverAdapter;
 import com.mutrabot.adapter.out.audio.OEmbedMetadataLookup;
 import com.mutrabot.adapter.out.audio.TrackAudioRegistry;
+import com.mutrabot.adapter.out.audio.YtDlpProcessRunner;
+import com.mutrabot.adapter.out.audio.YtDlpResolver;
 import com.mutrabot.adapter.out.persistence.InMemoryQueueAdapter;
 import com.mutrabot.application.service.HelpCommandService;
 import com.mutrabot.application.service.IdleDisconnectService;
@@ -56,7 +58,10 @@ public final class BotApplication {
         TrackAudioRegistry registry = new TrackAudioRegistry();
         InMemoryQueueAdapter queues = new InMemoryQueueAdapter();
         LavaplayerResolverAdapter resolver = new LavaplayerResolverAdapter(
-                manager, registry, new OEmbedMetadataLookup());
+                manager,
+                registry,
+                new OEmbedMetadataLookup(),
+                YtDlpResolver.detect(new YtDlpProcessRunner()));
         LavaplayerPlaybackAdapter playback = new LavaplayerPlaybackAdapter(manager, () -> jda, registry);
         JdaAnnouncer announcer = new JdaAnnouncer();
 

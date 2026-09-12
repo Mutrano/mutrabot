@@ -60,11 +60,11 @@ class PlaybackFailureServiceTest {
         Track next = TestData.track("t2", "Próxima");
         seed(failed, next);
 
-        service.onTrackFailed(TestData.GUILD, TrackFailureKind.RESTRICTED);
+        service.onTrackFailed(TestData.GUILD, TrackFailureKind.LOGIN_REQUIRED);
 
         assertThat(playback.lastPlayed()).isEqualTo(next);
         assertThat(announcements).containsExactly(
-                BotMessages.trackFailed("Restrita", TrackFailureKind.RESTRICTED, Optional.of(next)));
+                BotMessages.trackFailed("Restrita", TrackFailureKind.LOGIN_REQUIRED, Optional.of(next)));
         assertThat(idleDisconnect.isScheduled(TestData.GUILD)).isFalse();
         assertThat(queues.find(TestData.GUILD).orElseThrow().current()).contains(next);
     }
@@ -75,7 +75,7 @@ class PlaybackFailureServiceTest {
         idleDisconnect.scheduleDisconnect(TestData.GUILD);
         assertThat(idleDisconnect.isScheduled(TestData.GUILD)).isTrue();
 
-        service.onTrackFailed(TestData.GUILD, TrackFailureKind.RESTRICTED);
+        service.onTrackFailed(TestData.GUILD, TrackFailureKind.LOGIN_REQUIRED);
 
         assertThat(idleDisconnect.isScheduled(TestData.GUILD)).isFalse();
     }
@@ -85,11 +85,11 @@ class PlaybackFailureServiceTest {
         Track failed = TestData.track("t1", "Restrita");
         seed(failed);
 
-        service.onTrackFailed(TestData.GUILD, TrackFailureKind.RESTRICTED);
+        service.onTrackFailed(TestData.GUILD, TrackFailureKind.LOGIN_REQUIRED);
 
         assertThat(playback.played).isEmpty();
         assertThat(announcements).containsExactly(
-                BotMessages.trackFailed("Restrita", TrackFailureKind.RESTRICTED, Optional.empty()));
+                BotMessages.trackFailed("Restrita", TrackFailureKind.LOGIN_REQUIRED, Optional.empty()));
         assertThat(idleDisconnect.isScheduled(TestData.GUILD)).isTrue();
         assertThat(queues.find(TestData.GUILD).orElseThrow().isEmpty()).isTrue();
     }

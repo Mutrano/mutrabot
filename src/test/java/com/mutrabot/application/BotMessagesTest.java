@@ -73,11 +73,11 @@ class BotMessagesTest {
     }
 
     @Test
-    void restrictedTrackFailureExplainsLoginRequirement() {
+    void loginRequiredTrackFailureExplainsYouTubeVerification() {
         Track next = TestData.track("t2", "Próxima", TestData.requester("Bia"));
-        assertThat(BotMessages.trackFailed("Restrita", com.mutrabot.domain.model.TrackFailureKind.RESTRICTED, Optional.of(next)))
+        assertThat(BotMessages.trackFailed("Restrita", com.mutrabot.domain.model.TrackFailureKind.LOGIN_REQUIRED, Optional.of(next)))
                 .isEqualTo("""
-                        🚫 Não consigo tocar **Restrita**: restrito para maiores de 18 anos (o YouTube exige login).
+                        🚫 Não consegui tocar **Restrita**: o YouTube exigiu login/verificação para esse vídeo (restrição do vídeo ou bloqueio anti-bot).
                         ▶ Tocando agora: **Próxima** — pedido por Bia""");
     }
 

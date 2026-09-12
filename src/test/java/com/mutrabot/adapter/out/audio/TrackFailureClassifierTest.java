@@ -10,13 +10,13 @@ class TrackFailureClassifierTest {
     @Test
     void detectsLoginAndAgeRestrictions() {
         assertThat(TrackFailureClassifier.classify("This video requires login."))
-                .isEqualTo(TrackFailureKind.RESTRICTED);
+                .isEqualTo(TrackFailureKind.LOGIN_REQUIRED);
         assertThat(TrackFailureClassifier.classify("Sign in to confirm you're not a bot"))
-                .isEqualTo(TrackFailureKind.RESTRICTED);
+                .isEqualTo(TrackFailureKind.LOGIN_REQUIRED);
         assertThat(TrackFailureClassifier.classify("AGE-RESTRICTED video"))
-                .isEqualTo(TrackFailureKind.RESTRICTED);
+                .isEqualTo(TrackFailureKind.LOGIN_REQUIRED);
         assertThat(TrackFailureClassifier.classify("Please confirm your age"))
-                .isEqualTo(TrackFailureKind.RESTRICTED);
+                .isEqualTo(TrackFailureKind.LOGIN_REQUIRED);
     }
 
     @Test

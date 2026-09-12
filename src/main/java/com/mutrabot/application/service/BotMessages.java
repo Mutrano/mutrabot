@@ -84,8 +84,8 @@ public final class BotMessages {
     public static String trackFailed(String title, TrackFailureKind kind, Optional<Track> next) {
         String trackName = title == null ? "essa faixa" : "**" + title + "**";
         StringBuilder message = new StringBuilder(switch (kind) {
-            case RESTRICTED -> "🚫 Não consigo tocar " + trackName
-                    + ": restrito para maiores de 18 anos (o YouTube exige login).";
+            case LOGIN_REQUIRED -> "🚫 Não consegui tocar " + trackName
+                    + ": o YouTube exigiu login/verificação para esse vídeo (restrição do vídeo ou bloqueio anti-bot).";
             case UNAVAILABLE -> "🚫 Não consegui tocar " + trackName
                     + ": a faixa está indisponível, privada ou removida.";
             case STUCK -> "⚠️ " + trackName + " travou e foi pulada.";

@@ -4,6 +4,7 @@ import com.mutrabot.application.port.out.TrackResolverPort;
 import com.mutrabot.domain.model.Requester;
 import com.mutrabot.domain.model.SourceKind;
 import com.mutrabot.domain.model.Track;
+import com.mutrabot.domain.model.TrackId;
 import com.mutrabot.domain.result.ResolverResult;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
@@ -13,6 +14,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -28,18 +30,37 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
     private final TrackAudioRegistry registry;
     private final MetadataLookup metadata;
     private final Duration timeout;
+    private final YtDlpResolver ytDlp;
 
     public LavaplayerResolverAdapter(
             AudioPlayerManager manager, TrackAudioRegistry registry, MetadataLookup metadata) {
-        this(manager, registry, metadata, DEFAULT_TIMEOUT);
+        this(manager, registry, metadata, DEFAULT_TIMEOUT, YtDlpResolver.disabled());
     }
 
     public LavaplayerResolverAdapter(
             AudioPlayerManager manager, TrackAudioRegistry registry, MetadataLookup metadata, Duration timeout) {
+        this(manager, registry, metadata, timeout, YtDlpResolver.disabled());
+    }
+
+    public LavaplayerResolverAdapter(
+            AudioPlayerManager manager,
+            TrackAudioRegistry registry,
+            MetadataLookup metadata,
+            YtDlpResolver ytDlp) {
+        this(manager, registry, metadata, DEFAULT_TIMEOUT, ytDlp);
+    }
+
+    public LavaplayerResolverAdapter(
+            AudioPlayerManager manager,
+            TrackAudioRegistry registry,
+            MetadataLookup metadata,
+            Duration timeout,
+            YtDlpResolver ytDlp) {
         this.manager = Objects.requireNonNull(manager, "manager");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.metadata = Objects.requireNonNull(metadata, "metadata");
         this.timeout = Objects.requireNonNull(timeout, "timeout");
+        this.ytDlp = Objects.requireNonNull(ytDlp, "ytDlp");
     }
 
     @Override
@@ -55,12 +76,102 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
                 return new ResolverResult.LoadFailed(
                         trimmed, "não consegui identificar a faixa nessa fonte", true);
             }
+            ResolverResult viaYtDlp = resolveWithYtDlp(
+                    SearchQuery.withSearchPrefix(title.get()), requester, nonStreamable.get(), trimmed);
+            if (viaYtDlp != null) {
+                return viaYtDlp;
+            }
             return load(SearchQuery.withSearchPrefix(title.get()), trimmed, nonStreamable.get(), true, requester, trimmed);
         }
         if (SearchQuery.isUrl(trimmed)) {
-            return load(trimmed, null, SourceKindResolver.detect(trimmed), false, requester, trimmed);
+            SourceKind kind = SourceKindResolver.detect(trimmed);
+            ResolverResult viaYtDlp = resolveWithYtDlp(trimmed, requester, kind, trimmed);
+            if (viaYtDlp != null) {
+                return viaYtDlp;
+            }
+            return load(trimmed, null, kind, false, requester, trimmed);
+        }
+        ResolverResult viaYtDlp = resolveWithYtDlp(
+                SearchQuery.withSearchPrefix(trimmed), requester, SourceKind.SEARCH_RESULT, null);
+        if (viaYtDlp != null) {
+            return viaYtDlp;
         }
         return load(SearchQuery.withSearchPrefix(trimmed), null, SourceKind.SEARCH_RESULT, true, requester, trimmed);
+    }
+
+    private ResolverResult resolveWithYtDlp(
+            String effectiveQuery, Requester requester, SourceKind kind, String sourceUrlOverride) {
+        if (!ytDlp.available() || isPlaylistQuery(effectiveQuery)) {
+            return null;
+        }
+        if (kind == SourceKind.SOUNDCLOUD || kind == SourceKind.HTTP) {
+            return null;
+        }
+        String ytDlpQuery = effectiveQuery.startsWith(SearchQuery.SEARCH_PREFIX)
+                ? "ytsearch1:" + effectiveQuery.substring(SearchQuery.SEARCH_PREFIX.length())
+                : effectiveQuery;
+        Optional<YtDlpMedia> media = ytDlp.resolve(ytDlpQuery);
+        if (media.isEmpty()) {
+            return null;
+        }
+        return loadStream(media.get(), requester, kind, sourceUrlOverride);
+    }
+
+    static boolean isPlaylistQuery(String query) {
+        String lower = query.toLowerCase(Locale.ROOT);
+        return query.contains("list=") && lower.contains("youtube.com")
+                || lower.contains("/playlist")
+                || lower.contains("/sets/")
+                || lower.contains("/album/");
+    }
+
+    private ResolverResult loadStream(
+            YtDlpMedia media, Requester requester, SourceKind kind, String sourceUrlOverride) {
+        CompletableFuture<AudioTrack> future = new CompletableFuture<>();
+        manager.loadItemOrdered(this, media.streamUrl(), new AudioLoadResultHandler() {
+            @Override
+            public void trackLoaded(AudioTrack track) {
+                future.complete(track);
+            }
+
+            @Override
+            public void playlistLoaded(AudioPlaylist playlist) {
+                future.complete(playlist.getTracks().isEmpty() ? null : playlist.getTracks().get(0));
+            }
+
+            @Override
+            public void noMatches() {
+                future.complete(null);
+            }
+
+            @Override
+            public void loadFailed(FriendlyException exception) {
+                future.complete(null);
+            }
+        });
+        AudioTrack audioTrack;
+        try {
+            audioTrack = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException | ExecutionException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return null;
+        }
+        if (audioTrack == null) {
+            return null;
+        }
+        TrackId trackId = new TrackId(media.id());
+        Track track = new Track(
+                trackId,
+                media.title(),
+                media.uploader(),
+                sourceUrlOverride != null ? sourceUrlOverride : media.webpageUrl(),
+                media.duration(),
+                kind,
+                requester);
+        registry.register(trackId, audioTrack);
+        return new ResolverResult.ResolvedTrack(track);
     }
 
     private ResolverResult load(

@@ -54,21 +54,23 @@ O hook `pre-push` roda gitleaks nos commits que estão sendo enviados e bloqueia
 
 As respostas são em português. Qualquer membro que possa enviar mensagens usa todos os comandos.
 
-## YouTube bloqueando ("sign in to confirm you're not a bot")
+## YouTube
 
-Vídeos normais tocam sem configuração. Vídeos com restrição de idade ou que o YouTube marcar como "requer login" só tocam com OAuth. Gere um refresh token uma vez:
+Vídeos comuns tocam direto pelo `youtube-source`. Alguns vídeos que o YouTube marca com "requires login" (conteúdo restrito ou bloqueio anti-bot) falham nesse extrator. Para esses casos o bot usa o `yt-dlp` como resolvedor preferido quando ele está instalado:
+
+```powershell
+python -m pip install -U --user yt-dlp
+```
+
+O bot detecta `yt-dlp` no PATH, depois `python -m yt_dlp`, e usa Node como runtime JS se disponível. Se o executável estiver em outro lugar, preencha `YTDLP_PATH` no `.env`. Sem yt-dlp, o bot continua funcionando com o `youtube-source` e avisa quando um vídeo não puder ser tocado.
+
+Alternativa para vídeos restritos: OAuth com conta burner.
 
 ```powershell
 .\mvnw.cmd exec:java "-Dexec.args=--youtube-oauth"
 ```
 
-O log mostra uma URL e um código. Use uma conta **burner** (não a principal) em https://www.google.com/device, informe o código e espere. Quando autorizar, o console imprime:
-
-```dotenv
-YOUTUBE_REFRESH_TOKEN=...
-```
-
-Cole no `.env` e reinicie o bot. Alternativa sem conta: gere `poToken` e `visitorData` com o https://github.com/iv-org/youtube-trusted-session-generator ou o https://github.com/Brainicism/bgutil-ytdlp-pot-provider e preencha `YOUTUBE_PO_TOKEN` e `YOUTUBE_VISITOR_DATA` no `.env`. O poToken expira em poucas horas e pode não funcionar com todos os clients.
+O log mostra uma URL e um código. Autorize em https://www.google.com/device (conta burner, não a principal) e cole o `YOUTUBE_REFRESH_TOKEN=...` impresso no `.env`. OAuth não é necessário se o yt-dlp resolver seus vídeos.
 
 ## Qualidade
 

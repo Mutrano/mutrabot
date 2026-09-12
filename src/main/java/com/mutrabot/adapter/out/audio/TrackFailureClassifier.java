@@ -19,7 +19,7 @@ public final class TrackFailureClassifier {
                 || lower.contains("age-restricted")
                 || lower.contains("age restricted")
                 || lower.contains("confirm your age")) {
-            return TrackFailureKind.RESTRICTED;
+            return TrackFailureKind.LOGIN_REQUIRED;
         }
         if (lower.contains("unavailable")
                 || lower.contains("not available")

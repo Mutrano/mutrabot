@@ -160,6 +160,7 @@
             <exclude>com/mutrabot/adapter/out/audio/AudioPlayerSendHandler*</exclude>
             <exclude>com/mutrabot/adapter/out/audio/LavaplayerPlaybackAdapter*</exclude>
             <exclude>com/mutrabot/adapter/out/audio/OEmbedMetadataLookup*</exclude>
+            <exclude>com/mutrabot/adapter/out/audio/YtDlpProcessRunner*</exclude>
           </excludes>
         </configuration>
         <executions>

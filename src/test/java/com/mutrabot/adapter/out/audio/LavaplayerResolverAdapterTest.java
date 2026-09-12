@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -282,5 +283,119 @@ class LavaplayerResolverAdapterTest {
         adapter.resolve("  artista  ", requester);
 
         verify(manager).loadItemOrdered(any(), eq("ytsearch:artista"), any());
+    }
+
+    private final List<List<String>> ytDlpCommands = new ArrayList<>();
+
+    private YtDlpResolver ytDlp(String stdout) {
+        return new YtDlpResolver(command -> {
+            ytDlpCommands.add(List.copyOf(command));
+            return new YtDlpResolver.CommandRunner.Result(0, stdout, "");
+        }, List.of("yt-dlp"), List.of());
+    }
+
+    private static final String YTDLP_JSON = """
+            {"id":"ytdlp1","title":"Título via yt-dlp","uploader":"Canal","duration":200,\
+            "webpage_url":"https://www.youtube.com/watch?v=ytdlp1",\
+            "url":"https://stream.example/audio","is_live":false}""";
+
+    @Test
+    void ytDlpStreamUrlIsPlayedDirectlyForYoutubeUrl() {
+        AudioTrack streamTrack = mock(AudioTrack.class);
+        when(manager.loadItemOrdered(any(), eq("https://stream.example/audio"), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    invocation.<AudioLoadResultHandler>getArgument(2).trackLoaded(streamTrack);
+                    return null;
+                });
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+
+        ResolverResult result = adapter.resolve("https://www.youtube.com/watch?v=Yjfo2vzYVno", requester);
+
+        assertThat(result).isInstanceOf(ResolverResult.ResolvedTrack.class);
+        Track track = ((ResolverResult.ResolvedTrack) result).track();
+        assertThat(track.title()).isEqualTo("Título via yt-dlp");
+        assertThat(track.author()).isEqualTo("Canal");
+        assertThat(track.source()).isEqualTo(SourceKind.YOUTUBE);
+        assertThat(track.sourceUrl()).isEqualTo("https://www.youtube.com/watch?v=Yjfo2vzYVno");
+        assertThat(track.duration()).isEqualTo(Duration.ofSeconds(200));
+        assertThat(registry.find(track.id())).contains(streamTrack);
+        assertThat(ytDlpCommands).hasSize(1);
+    }
+
+    @Test
+    void ytDlpReceivesYoutubeSearchForTextQuery() {
+        AudioTrack streamTrack = mock(AudioTrack.class);
+        when(manager.loadItemOrdered(any(), eq("https://stream.example/audio"), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    invocation.<AudioLoadResultHandler>getArgument(2).trackLoaded(streamTrack);
+                    return null;
+                });
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+
+        adapter.resolve("artista musica", requester);
+
+        assertThat(ytDlpCommands.get(0)).contains("ytsearch1:artista musica");
+    }
+
+    @Test
+    void ytDlpFallsBackToYoutubeSourceWhenItFails() {
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp("{\"title\":\"sem url\"}"));
+        AudioTrack audioTrack = audioTrack("v1", "Fallback youtube");
+        stubLoad(handler -> handler.trackLoaded(audioTrack));
+
+        ResolverResult result = adapter.resolve("https://www.youtube.com/watch?v=abc", requester);
+
+        assertThat(((ResolverResult.ResolvedTrack) result).track().title()).isEqualTo("Fallback youtube");
+        verify(manager).loadItemOrdered(any(), eq("https://www.youtube.com/watch?v=abc"), any());
+    }
+
+    @Test
+    void ytDlpFallsBackWhenStreamUrlCannotBeLoaded() {
+        stubLoad(handler -> handler.trackLoaded(audioTrack("v2", "Youtube normal")));
+        when(manager.loadItemOrdered(any(), eq("https://stream.example/audio"), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    invocation.<AudioLoadResultHandler>getArgument(2).noMatches();
+                    return null;
+                });
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+
+        ResolverResult result = adapter.resolve("https://www.youtube.com/watch?v=abc", requester);
+
+        assertThat(((ResolverResult.ResolvedTrack) result).track().title()).isEqualTo("Youtube normal");
+    }
+
+    @Test
+    void ytDlpIsSkippedForPlaylistUrls() {
+        AudioTrack one = audioTrack("p1", "Faixa 1");
+        BasicAudioPlaylist playlist = new BasicAudioPlaylist("playlist", List.of(one), null, false);
+        stubLoad(handler -> handler.playlistLoaded(playlist));
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+
+        ResolverResult result = adapter.resolve(
+                "https://www.youtube.com/playlist?list=PL123", requester);
+
+        assertThat(result).isInstanceOf(ResolverResult.ResolvedPlaylist.class);
+        assertThat(ytDlpCommands).isEmpty();
+    }
+
+    @Test
+    void ytDlpIsSkippedForSoundcloudUrls() {
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+        stubLoad(handler -> handler.trackLoaded(audioTrack("sc1", "SoundCloud track")));
+
+        ResolverResult result = adapter.resolve("https://soundcloud.com/artist/track", requester);
+
+        assertThat(((ResolverResult.ResolvedTrack) result).track().source()).isEqualTo(SourceKind.SOUNDCLOUD);
+        assertThat(ytDlpCommands).isEmpty();
+    }
+
+    @Test
+    void playlistQueryDetection() {
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://www.youtube.com/playlist?list=PL1")).isTrue();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://www.youtube.com/watch?v=x&list=RDx")).isTrue();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://soundcloud.com/a/sets/my-set")).isTrue();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://open.spotify.com/album/abc")).isTrue();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://youtu.be/abc")).isFalse();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("artista musica")).isFalse();
     }
 }

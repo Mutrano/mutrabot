@@ -7,7 +7,7 @@ import java.util.concurrent.TimeUnit;
 
 public final class YtDlpProcessRunner implements YtDlpResolver.CommandRunner {
 
-    private static final long TIMEOUT_SECONDS = 90;
+    private static final long TIMEOUT_SECONDS = 300;
 
     @Override
     public Result run(List<String> command) {

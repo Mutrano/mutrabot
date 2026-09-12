@@ -92,6 +92,48 @@ public final class YtDlpResolver {
         }
     }
 
+    public List<YtDlpMedia> resolvePlaylist(String url, int maxEntries) {
+        if (!available() || url == null || url.isBlank() || maxEntries <= 0) {
+            return List.of();
+        }
+        List<String> command = new ArrayList<>(baseCommand);
+        command.add("-j");
+        command.add("-f");
+        command.add("bestaudio");
+        command.add("--yes-playlist");
+        command.add("--playlist-end");
+        command.add(Integer.toString(maxEntries));
+        command.add("--no-warnings");
+        command.addAll(jsRuntimeArgs);
+        command.add(url);
+
+        CommandRunner.Result result;
+        try {
+            result = runner.run(command);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+        if (result.stdout() == null || result.stdout().isBlank()) {
+            return List.of();
+        }
+        return parseAll(result.stdout());
+    }
+
+    static List<YtDlpMedia> parseAll(String stdout) {
+        List<YtDlpMedia> media = new ArrayList<>();
+        for (String line : stdout.split("\\R")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            try {
+                parse(JsonBrowser.parse(line)).ifPresent(media::add);
+            } catch (RuntimeException | java.io.IOException ignored) {
+                // skip lines yt-dlp could not extract
+            }
+        }
+        return media;
+    }
+
     static Optional<YtDlpMedia> parse(JsonBrowser json) {
         String streamUrl = json.get("url").text();
         if (streamUrl == null || streamUrl.isBlank()) {

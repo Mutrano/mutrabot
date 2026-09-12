@@ -20,7 +20,6 @@
     <jda.version>6.6.0</jda.version>
     <jdave.version>0.1.8</jdave.version>
     <lavaplayer.version>2.2.3</lavaplayer.version>
-    <youtube-source.version>1.18.2</youtube-source.version>
     <logback.version>1.5.38</logback.version>
 
     <junit.version>5.14.4</junit.version>
@@ -34,13 +33,6 @@
 
     <argLine>-XX:+EnableDynamicAgentLoading</argLine>
   </properties>
-
-  <repositories>
-    <repository>
-      <id>lavalink-releases</id>
-      <url>https://maven.lavalink.dev/releases</url>
-    </repository>
-  </repositories>
 
   <dependencyManagement>
     <dependencies>
@@ -83,11 +75,6 @@
       <groupId>dev.arbjerg</groupId>
       <artifactId>lavaplayer</artifactId>
       <version>${lavaplayer.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>dev.lavalink.youtube</groupId>
-      <artifactId>v2</artifactId>
-      <version>${youtube-source.version}</version>
     </dependency>
 
     <dependency>

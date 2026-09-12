@@ -1,6 +1,7 @@
 package com.mutrabot.adapter.out.audio;
 
 import com.mutrabot.application.port.out.TrackResolverPort;
+import com.mutrabot.domain.model.GuildQueue;
 import com.mutrabot.domain.model.Requester;
 import com.mutrabot.domain.model.SourceKind;
 import com.mutrabot.domain.model.Track;
@@ -13,6 +14,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -25,6 +27,7 @@ import java.util.concurrent.TimeoutException;
 public final class LavaplayerResolverAdapter implements TrackResolverPort {
 
     static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
+    private static final String YTDLP_REQUIRED = "o resolvedor de YouTube (yt-dlp) não está disponível";
 
     private final AudioPlayerManager manager;
     private final TrackAudioRegistry registry;
@@ -85,6 +88,9 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
         }
         if (SearchQuery.isUrl(trimmed)) {
             SourceKind kind = SourceKindResolver.detect(trimmed);
+            if (kind == SourceKind.YOUTUBE) {
+                return resolveYoutube(trimmed, requester);
+            }
             ResolverResult viaYtDlp = resolveWithYtDlp(trimmed, requester, kind, trimmed);
             if (viaYtDlp != null) {
                 return viaYtDlp;
@@ -101,7 +107,7 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
 
     private ResolverResult resolveWithYtDlp(
             String effectiveQuery, Requester requester, SourceKind kind, String sourceUrlOverride) {
-        if (!ytDlp.available() || isPlaylistQuery(effectiveQuery)) {
+        if (!ytDlp.available()) {
             return null;
         }
         if (kind == SourceKind.SOUNDCLOUD || kind == SourceKind.HTTP) {
@@ -117,12 +123,83 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
         return loadStream(media.get(), requester, kind, sourceUrlOverride);
     }
 
+    private ResolverResult resolveYoutube(String url, Requester requester) {
+        if (isPlaylistQuery(url)) {
+            return resolveYoutubePlaylist(url, requester);
+        }
+        if (!ytDlp.available()) {
+            return new ResolverResult.LoadFailed(url, YTDLP_REQUIRED, true);
+        }
+        Optional<YtDlpMedia> media = ytDlp.resolve(url);
+        if (media.isEmpty()) {
+            return new ResolverResult.LoadFailed(url, "não consegui resolver esse vídeo pelo yt-dlp", true);
+        }
+        ResolverResult loaded = loadStream(media.get(), requester, SourceKind.YOUTUBE, url);
+        if (loaded == null) {
+            return new ResolverResult.LoadFailed(url, "não consegui carregar o áudio resolvido pelo yt-dlp", true);
+        }
+        return loaded;
+    }
+
+    private ResolverResult resolveYoutubePlaylist(String url, Requester requester) {
+        if (!ytDlp.available()) {
+            return new ResolverResult.LoadFailed(url, YTDLP_REQUIRED, true);
+        }
+        List<YtDlpMedia> entries = ytDlp.resolvePlaylist(
+                canonicalPlaylistUrl(url), GuildQueue.MAX_PLAYLIST_TRACKS);
+        List<Track> tracks = new ArrayList<>();
+        for (YtDlpMedia entry : entries) {
+            ResolverResult loaded = loadStream(entry, requester, SourceKind.YOUTUBE, entry.webpageUrl());
+            if (loaded instanceof ResolverResult.ResolvedTrack resolved) {
+                tracks.add(resolved.track());
+            }
+        }
+        if (tracks.isEmpty()) {
+            return new ResolverResult.NotFound(url);
+        }
+        return new ResolverResult.ResolvedPlaylist(tracks, tracks.size(), 0);
+    }
+
     static boolean isPlaylistQuery(String query) {
+        if (query == null) {
+            return false;
+        }
         String lower = query.toLowerCase(Locale.ROOT);
-        return query.contains("list=") && lower.contains("youtube.com")
-                || lower.contains("/playlist")
-                || lower.contains("/sets/")
-                || lower.contains("/album/");
+        if (lower.contains("/playlist") || lower.contains("/sets/") || lower.contains("/album/")) {
+            return true;
+        }
+        if (!lower.contains("youtube.com") && !lower.contains("youtu.be")) {
+            return false;
+        }
+        String list = queryParam(query, "list");
+        return list != null && !list.toLowerCase(Locale.ROOT).startsWith("rd");
+    }
+
+    static String canonicalPlaylistUrl(String url) {
+        String lower = url.toLowerCase(Locale.ROOT);
+        if (!lower.contains("youtube.com") && !lower.contains("youtu.be")) {
+            return url;
+        }
+        String list = queryParam(url, "list");
+        if (list == null || list.isBlank()) {
+            return url;
+        }
+        return "https://www.youtube.com/playlist?list=" + list;
+    }
+
+    private static String queryParam(String url, String name) {
+        String token = name + "=";
+        int index = 0;
+        while ((index = url.indexOf(token, index)) >= 0) {
+            char before = index == 0 ? '?' : url.charAt(index - 1);
+            if (before == '?' || before == '&') {
+                int start = index + token.length();
+                int end = url.indexOf('&', start);
+                return end < 0 ? url.substring(start) : url.substring(start, end);
+            }
+            index += token.length();
+        }
+        return null;
     }
 
     private ResolverResult loadStream(

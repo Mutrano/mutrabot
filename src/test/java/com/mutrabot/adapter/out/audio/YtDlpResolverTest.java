@@ -96,8 +96,47 @@ class YtDlpResolverTest {
     }
 
     @Test
-    void liveStreamsHaveUnknownDuration() {
-        YtDlpResolver resolver = availableResolver(
+    void parsesPlaylistEntriesFromMultipleLines() {
+        String first = "{\"id\":\"a\",\"title\":\"A\",\"url\":\"https://x/a\",\"webpage_url\":\"https://y/a\"}";
+        String second = "{\"id\":\"b\",\"title\":\"B\",\"url\":\"https://x/b\",\"webpage_url\":\"https://y/b\"}";
+        YtDlpResolver resolver = availableResolver(first + "\n" + second + "\n");
+
+        List<YtDlpMedia> media = resolver.resolvePlaylist("https://www.youtube.com/playlist?list=PL1", 100);
+
+        assertThat(media).extracting(YtDlpMedia::id).containsExactly("a", "b");
+        List<String> playlistCommand = commands.get(0);
+        assertThat(playlistCommand).contains("-j", "--yes-playlist", "--playlist-end", "100");
+        assertThat(playlistCommand.get(playlistCommand.size() - 1))
+                .isEqualTo("https://www.youtube.com/playlist?list=PL1");
+    }
+
+    @Test
+    void playlistSkipsLinesYtDlpCouldNotExtract() {
+        String valid = "{\"id\":\"a\",\"title\":\"A\",\"url\":\"https://x/a\"}";
+        YtDlpResolver resolver = availableResolver("WARNING: nope\n" + valid + "\nnot json");
+
+        List<YtDlpMedia> media = resolver.resolvePlaylist("https://www.youtube.com/playlist?list=PL1", 50);
+
+        assertThat(media).extracting(YtDlpMedia::id).containsExactly("a");
+    }
+
+    @Test
+    void playlistReturnsEmptyForBlankInputDisabledResolverOrFailure() {
+        YtDlpResolver failing = new YtDlpResolver(
+                runner(command -> new YtDlpResolver.CommandRunner.Result(1, "", "erro")),
+                List.of("yt-dlp"),
+                List.of());
+        YtDlpResolver disabled = YtDlpResolver.disabled();
+
+        assertThat(availableResolver("").resolvePlaylist("https://x", 10)).isEmpty();
+        assertThat(availableResolver(MEDIA_JSON).resolvePlaylist(null, 10)).isEmpty();
+        assertThat(availableResolver(MEDIA_JSON).resolvePlaylist("https://x", 0)).isEmpty();
+        assertThat(failing.resolvePlaylist("https://x", 10)).isEmpty();
+        assertThat(disabled.resolvePlaylist("https://x", 10)).isEmpty();
+    }
+
+    @Test
+    void liveStreamsHaveUnknownDuration() {        YtDlpResolver resolver = availableResolver(
                 "{\"id\":\"live\",\"title\":\"Ao vivo\",\"duration\":0,\"url\":\"https://x/y\",\"is_live\":true}");
 
         YtDlpMedia media = resolver.resolve("https://youtu.be/live").orElseThrow();

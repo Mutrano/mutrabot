@@ -1,6 +1,6 @@
-target/
-build/
-out/
+/target/
+/build/
+/out/
 *.class
 *.log
 .env

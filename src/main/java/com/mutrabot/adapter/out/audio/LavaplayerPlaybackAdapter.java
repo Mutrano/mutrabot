@@ -3,11 +3,14 @@ package com.mutrabot.adapter.out.audio;
 import com.mutrabot.application.port.out.AudioPlaybackPort;
 import com.mutrabot.domain.model.GuildId;
 import com.mutrabot.domain.model.Track;
+import com.mutrabot.domain.model.TrackFailureKind;
 import com.mutrabot.domain.model.VoiceChannelId;
 import com.mutrabot.domain.model.VoiceSession;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.player.event.TrackEndEvent;
+import com.sedmelluq.discord.lavaplayer.player.event.TrackExceptionEvent;
+import com.sedmelluq.discord.lavaplayer.player.event.TrackStuckEvent;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason;
 import net.dv8tion.jda.api.JDA;
@@ -20,6 +23,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -33,6 +37,9 @@ public final class LavaplayerPlaybackAdapter implements AudioPlaybackPort {
     private volatile Consumer<GuildId> trackFinishedListener = guild -> {
     };
 
+    private volatile BiConsumer<GuildId, TrackFailureKind> trackFailureListener = (guild, kind) -> {
+    };
+
     public LavaplayerPlaybackAdapter(AudioPlayerManager manager, Supplier<JDA> jda, TrackAudioRegistry registry) {
         this.manager = Objects.requireNonNull(manager, "manager");
         this.jda = Objects.requireNonNull(jda, "jda");
@@ -41,6 +48,10 @@ public final class LavaplayerPlaybackAdapter implements AudioPlaybackPort {
 
     public void setTrackFinishedListener(Consumer<GuildId> listener) {
         this.trackFinishedListener = Objects.requireNonNull(listener, "listener");
+    }
+
+    public void setTrackFailureListener(BiConsumer<GuildId, TrackFailureKind> listener) {
+        this.trackFailureListener = Objects.requireNonNull(listener, "listener");
     }
 
     @Override
@@ -148,8 +159,15 @@ public final class LavaplayerPlaybackAdapter implements AudioPlaybackPort {
     private GuildPlayer createPlayer(GuildId guild) {
         AudioPlayer player = manager.createPlayer();
         player.addListener(event -> {
-            if (event instanceof TrackEndEvent end && end.endReason == AudioTrackEndReason.FINISHED) {
-                trackFinishedListener.accept(guild);
+            if (event instanceof TrackEndEvent end) {
+                if (end.endReason == AudioTrackEndReason.FINISHED) {
+                    trackFinishedListener.accept(guild);
+                }
+            } else if (event instanceof TrackExceptionEvent exceptionEvent) {
+                trackFailureListener.accept(
+                        guild, TrackFailureClassifier.classify(exceptionEvent.exception.getMessage()));
+            } else if (event instanceof TrackStuckEvent) {
+                trackFailureListener.accept(guild, TrackFailureKind.STUCK);
             }
         });
         return new GuildPlayer(player, new AudioPlayerSendHandler(player));

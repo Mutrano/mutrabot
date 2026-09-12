@@ -73,6 +73,35 @@ class BotMessagesTest {
     }
 
     @Test
+    void restrictedTrackFailureExplainsLoginRequirement() {
+        Track next = TestData.track("t2", "Próxima", TestData.requester("Bia"));
+        assertThat(BotMessages.trackFailed("Restrita", com.mutrabot.domain.model.TrackFailureKind.RESTRICTED, Optional.of(next)))
+                .isEqualTo("""
+                        🚫 Não consigo tocar **Restrita**: restrito para maiores de 18 anos (o YouTube exige login).
+                        ▶ Tocando agora: **Próxima** — pedido por Bia""");
+    }
+
+    @Test
+    void unavailableTrackFailureEndsQueueWhenNothingNext() {
+        assertThat(BotMessages.trackFailed("Sumida", com.mutrabot.domain.model.TrackFailureKind.UNAVAILABLE, Optional.empty()))
+                .isEqualTo("""
+                        🚫 Não consegui tocar **Sumida**: a faixa está indisponível, privada ou removida.
+                        📭 A fila acabou.""");
+    }
+
+    @Test
+    void stuckAndUnknownFailuresHaveMessagesForMissingTitle() {
+        assertThat(BotMessages.trackFailed(null, com.mutrabot.domain.model.TrackFailureKind.STUCK, Optional.empty()))
+                .isEqualTo("""
+                        ⚠️ essa faixa travou e foi pulada.
+                        📭 A fila acabou.""");
+        assertThat(BotMessages.trackFailed(null, com.mutrabot.domain.model.TrackFailureKind.UNKNOWN, Optional.empty()))
+                .isEqualTo("""
+                        ⚠️ Não consegui tocar essa faixa.
+                        📭 A fila acabou.""");
+    }
+
+    @Test
     void sourceLabelsCoverAllKinds() {
         assertThat(BotMessages.sourceLabel(SourceKind.YOUTUBE)).isEqualTo("YouTube");
         assertThat(BotMessages.sourceLabel(SourceKind.SOUNDCLOUD)).isEqualTo("SoundCloud");

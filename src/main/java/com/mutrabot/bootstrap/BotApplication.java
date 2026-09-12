@@ -11,6 +11,7 @@ import com.mutrabot.application.service.HelpCommandService;
 import com.mutrabot.application.service.IdleDisconnectService;
 import com.mutrabot.application.service.ListQueueService;
 import com.mutrabot.application.service.PingCommandService;
+import com.mutrabot.application.service.PlaybackFailureService;
 import com.mutrabot.application.service.PlayCommandService;
 import com.mutrabot.application.service.ResumeCommandService;
 import com.mutrabot.application.service.SkipCommandService;
@@ -73,6 +74,10 @@ public final class BotApplication {
 
         TrackFinishedService trackFinished = new TrackFinishedService(queues, playback, announcer, idleDisconnect);
         playback.setTrackFinishedListener(trackFinished::onTrackFinished);
+
+        PlaybackFailureService playbackFailure = new PlaybackFailureService(
+                queues, playback, announcer, idleDisconnect);
+        playback.setTrackFailureListener(playbackFailure::onTrackFailed);
 
         JdaCommandListener listener = new JdaCommandListener(
                 ExecutorConfig.commandExecutor(), play, stop, resume, skip, listQueue, ping, help, announcer);

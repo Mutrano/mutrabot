@@ -3,6 +3,7 @@ package com.mutrabot.application.service;
 import com.mutrabot.domain.model.GuildQueue;
 import com.mutrabot.domain.model.SourceKind;
 import com.mutrabot.domain.model.Track;
+import com.mutrabot.domain.model.TrackFailureKind;
 
 import java.util.List;
 import java.util.Locale;
@@ -78,6 +79,26 @@ public final class BotMessages {
 
     public static String queueEndedAnnouncement() {
         return "📭 A fila acabou.";
+    }
+
+    public static String trackFailed(String title, TrackFailureKind kind, Optional<Track> next) {
+        String trackName = title == null ? "essa faixa" : "**" + title + "**";
+        StringBuilder message = new StringBuilder(switch (kind) {
+            case RESTRICTED -> "🚫 Não consigo tocar " + trackName
+                    + ": restrito para maiores de 18 anos (o YouTube exige login).";
+            case UNAVAILABLE -> "🚫 Não consegui tocar " + trackName
+                    + ": a faixa está indisponível, privada ou removida.";
+            case STUCK -> "⚠️ " + trackName + " travou e foi pulada.";
+            case UNKNOWN -> "⚠️ Não consegui tocar " + trackName + ".";
+        });
+        if (next.isPresent()) {
+            Track track = next.get();
+            message.append("\n▶ Tocando agora: **").append(track.title()).append("** — pedido por ")
+                    .append(track.requestedBy().displayName());
+        } else {
+            message.append("\n📭 A fila acabou.");
+        }
+        return message.toString();
     }
 
     public static String nothingToSkip() {

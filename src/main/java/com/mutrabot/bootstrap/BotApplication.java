@@ -55,6 +55,7 @@ public final class BotApplication {
                 registry,
                 new OEmbedMetadataLookup(),
                 YtDlpResolver.detect(new YtDlpProcessRunner()));
+        resolver.clearCache();
         LavaplayerPlaybackAdapter playback = new LavaplayerPlaybackAdapter(manager, () -> jda, registry);
         JdaAnnouncer announcer = new JdaAnnouncer();
 

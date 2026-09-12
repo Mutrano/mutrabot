@@ -57,13 +57,15 @@ As respostas são em português. Qualquer membro que possa enviar mensagens usa 
 
 ## YouTube
 
-O YouTube é resolvido inteiramente pelo `yt-dlp` (vídeo único, busca e playlist). Instale com:
+O YouTube é resolvido inteiramente pelo `yt-dlp` (vídeo único, busca e playlist). Para vídeo único, o bot baixa a faixa (`bestaudio`) para um arquivo temporário antes de tocar e reproduz o arquivo local. O download usa requisições em partes (`--http-chunk-size 10M`), o que evita o throttling de conexão única do YouTube — streaming direto costuma ser limitado a ~2x o tempo real e causa cortes quando o buffer esgota. Se o download falhar, o bot volta para streaming direto. Lives não são baixadas.
 
 ```powershell
 python -m pip install -U --user yt-dlp
 ```
 
-O bot detecta `yt-dlp` no PATH, depois `python -m yt_dlp`, e usa Node como runtime JS se disponível. Se o executável estiver em outro lugar, preencha `YTDLP_PATH` no `.env`. Sem o `yt-dlp`, o bot avisa que o resolvedor de YouTube não está disponível e mantém a fila.
+O cache fica em `%TEMP%\mutrabot-audio` (ou o equivalente no Linux/macOS), é limpo na inicialização e os arquivos são removidos quando a faixa sai de reprodução.
+
+O bot detecta `yt-dlp` no PATH, depois `python -m yt_dlp`, e usa Node como runtime JS se disponível. Se o executável estiver em outro lugar, defina a variável de ambiente `YTDLP_PATH`. Sem o `yt-dlp`, o bot avisa que o resolvedor de YouTube não está disponível e mantém a fila.
 
 Playlists são resolvidas em uma única chamada ao `yt-dlp`, com limite de 100 faixas por pedido. Um link `watch?v=...&list=RD...` (mix do YouTube) toca só o vídeo; um `list=PL...` enfileira a playlist.
 

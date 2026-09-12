@@ -13,12 +13,15 @@ import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 
+import java.io.File;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -34,15 +37,16 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
     private final MetadataLookup metadata;
     private final Duration timeout;
     private final YtDlpResolver ytDlp;
+    private final Path downloadDirectory;
 
     public LavaplayerResolverAdapter(
             AudioPlayerManager manager, TrackAudioRegistry registry, MetadataLookup metadata) {
-        this(manager, registry, metadata, DEFAULT_TIMEOUT, YtDlpResolver.disabled());
+        this(manager, registry, metadata, DEFAULT_TIMEOUT, YtDlpResolver.disabled(), defaultDownloadDirectory());
     }
 
     public LavaplayerResolverAdapter(
             AudioPlayerManager manager, TrackAudioRegistry registry, MetadataLookup metadata, Duration timeout) {
-        this(manager, registry, metadata, timeout, YtDlpResolver.disabled());
+        this(manager, registry, metadata, timeout, YtDlpResolver.disabled(), defaultDownloadDirectory());
     }
 
     public LavaplayerResolverAdapter(
@@ -50,7 +54,7 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
             TrackAudioRegistry registry,
             MetadataLookup metadata,
             YtDlpResolver ytDlp) {
-        this(manager, registry, metadata, DEFAULT_TIMEOUT, ytDlp);
+        this(manager, registry, metadata, DEFAULT_TIMEOUT, ytDlp, defaultDownloadDirectory());
     }
 
     public LavaplayerResolverAdapter(
@@ -59,11 +63,38 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
             MetadataLookup metadata,
             Duration timeout,
             YtDlpResolver ytDlp) {
+        this(manager, registry, metadata, timeout, ytDlp, defaultDownloadDirectory());
+    }
+
+    public LavaplayerResolverAdapter(
+            AudioPlayerManager manager,
+            TrackAudioRegistry registry,
+            MetadataLookup metadata,
+            Duration timeout,
+            YtDlpResolver ytDlp,
+            Path downloadDirectory) {
         this.manager = Objects.requireNonNull(manager, "manager");
         this.registry = Objects.requireNonNull(registry, "registry");
         this.metadata = Objects.requireNonNull(metadata, "metadata");
         this.timeout = Objects.requireNonNull(timeout, "timeout");
         this.ytDlp = Objects.requireNonNull(ytDlp, "ytDlp");
+        this.downloadDirectory = Objects.requireNonNull(downloadDirectory, "downloadDirectory");
+    }
+
+    static Path defaultDownloadDirectory() {
+        return Path.of(System.getProperty("java.io.tmpdir"), "mutrabot-audio");
+    }
+
+    public void clearCache() {
+        File[] files = downloadDirectory.toFile().listFiles();
+        if (files == null) {
+            return;
+        }
+        for (File file : files) {
+            if (file.isFile()) {
+                TrackAudioRegistry.deleteQuietly(file.toPath());
+            }
+        }
     }
 
     @Override
@@ -120,7 +151,7 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
         if (media.isEmpty()) {
             return null;
         }
-        return loadStream(media.get(), requester, kind, sourceUrlOverride);
+        return loadBest(media.get(), requester, kind, sourceUrlOverride);
     }
 
     private ResolverResult resolveYoutube(String url, Requester requester) {
@@ -134,7 +165,7 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
         if (media.isEmpty()) {
             return new ResolverResult.LoadFailed(url, "não consegui resolver esse vídeo pelo yt-dlp", true);
         }
-        ResolverResult loaded = loadStream(media.get(), requester, SourceKind.YOUTUBE, url);
+        ResolverResult loaded = loadBest(media.get(), requester, SourceKind.YOUTUBE, url);
         if (loaded == null) {
             return new ResolverResult.LoadFailed(url, "não consegui carregar o áudio resolvido pelo yt-dlp", true);
         }
@@ -202,10 +233,48 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
         return null;
     }
 
+    private ResolverResult loadBest(
+            YtDlpMedia media, Requester requester, SourceKind kind, String sourceUrlOverride) {
+        if (!media.live()) {
+            String fileBaseName = YtDlpResolver.safeFileBaseName(media.id())
+                    + "-" + UUID.randomUUID().toString().substring(0, 8);
+            Optional<Path> downloaded = ytDlp.download(media.streamUrl(), downloadDirectory, fileBaseName);
+            if (downloaded.isPresent()) {
+                ResolverResult local = loadLocalFile(media, downloaded.get(), requester, kind, sourceUrlOverride);
+                if (local != null) {
+                    return local;
+                }
+            }
+        }
+        return loadStream(media, requester, kind, sourceUrlOverride);
+    }
+
     private ResolverResult loadStream(
             YtDlpMedia media, Requester requester, SourceKind kind, String sourceUrlOverride) {
+        AudioTrack audioTrack = awaitTrack(media.streamUrl());
+        if (audioTrack == null) {
+            return null;
+        }
+        TrackId trackId = new TrackId(media.id());
+        registry.register(trackId, audioTrack);
+        return new ResolverResult.ResolvedTrack(trackOf(media, requester, kind, sourceUrlOverride));
+    }
+
+    private ResolverResult loadLocalFile(
+            YtDlpMedia media, Path file, Requester requester, SourceKind kind, String sourceUrlOverride) {
+        AudioTrack audioTrack = awaitTrack(file.toString());
+        if (audioTrack == null) {
+            TrackAudioRegistry.deleteQuietly(file);
+            return null;
+        }
+        TrackId trackId = new TrackId(media.id());
+        registry.register(trackId, audioTrack, file);
+        return new ResolverResult.ResolvedTrack(trackOf(media, requester, kind, sourceUrlOverride));
+    }
+
+    private AudioTrack awaitTrack(String identifier) {
         CompletableFuture<AudioTrack> future = new CompletableFuture<>();
-        manager.loadItemOrdered(this, media.streamUrl(), new AudioLoadResultHandler() {
+        manager.loadItemOrdered(this, identifier, new AudioLoadResultHandler() {
             @Override
             public void trackLoaded(AudioTrack track) {
                 future.complete(track);
@@ -226,29 +295,26 @@ public final class LavaplayerResolverAdapter implements TrackResolverPort {
                 future.complete(null);
             }
         });
-        AudioTrack audioTrack;
         try {
-            audioTrack = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (TimeoutException | ExecutionException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
+            return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException | ExecutionException e) {
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             return null;
         }
-        if (audioTrack == null) {
-            return null;
-        }
-        TrackId trackId = new TrackId(media.id());
-        Track track = new Track(
-                trackId,
+    }
+
+    private Track trackOf(
+            YtDlpMedia media, Requester requester, SourceKind kind, String sourceUrlOverride) {
+        return new Track(
+                new TrackId(media.id()),
                 media.title(),
                 media.uploader(),
                 sourceUrlOverride != null ? sourceUrlOverride : media.webpageUrl(),
                 media.duration(),
                 kind,
                 requester);
-        registry.register(trackId, audioTrack);
-        return new ResolverResult.ResolvedTrack(track);
     }
 
     private ResolverResult load(

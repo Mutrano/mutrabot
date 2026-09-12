@@ -15,6 +15,8 @@ public final class AudioConfig {
         DefaultAudioPlayerManager manager = new DefaultAudioPlayerManager();
         manager.getConfiguration().setOutputFormat(StandardAudioDataFormats.DISCORD_OPUS);
         manager.getConfiguration().setResamplingQuality(AudioConfiguration.ResamplingQuality.HIGH);
+        manager.setFrameBufferDuration(15_000);
+        AudioSourceManagers.registerLocalSource(manager);
         AudioSourceManagers.registerRemoteSources(
                 manager,
                 com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager.class);

@@ -2,15 +2,26 @@ package com.mutrabot.adapter.out.audio;
 
 import com.sedmelluq.discord.lavaplayer.tools.JsonBrowser;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 public final class YtDlpResolver {
 
+    static final long DOWNLOAD_TIMEOUT_SECONDS = 300;
+    private static final int MAX_FILE_BASE_NAME_LENGTH = 120;
+
     public interface CommandRunner {
         Result run(List<String> command);
+
+        default Result run(List<String> command, long timeoutSeconds) {
+            return run(command);
+        }
 
         record Result(int exitCode, String stdout, String stderr) {
         }
@@ -132,6 +143,74 @@ public final class YtDlpResolver {
             }
         }
         return media;
+    }
+
+    public Optional<Path> download(String sourceUrl, Path directory, String fileBaseName) {
+        if (!available() || sourceUrl == null || sourceUrl.isBlank()) {
+            return Optional.empty();
+        }
+        directory.toFile().mkdirs();
+        List<String> command = new ArrayList<>(baseCommand);
+        command.add("--no-playlist");
+        command.add("--no-warnings");
+        command.add("--no-progress");
+        command.add("--http-chunk-size");
+        command.add("10M");
+        command.addAll(jsRuntimeArgs);
+        command.add("-o");
+        command.add(directory.resolve(fileBaseName + ".%(ext)s").toString());
+        command.add(sourceUrl);
+
+        try {
+            CommandRunner.Result result = runner.run(command, DOWNLOAD_TIMEOUT_SECONDS);
+            if (result.exitCode() != 0) {
+                deleteMatching(directory, fileBaseName);
+                return Optional.empty();
+            }
+        } catch (RuntimeException e) {
+            deleteMatching(directory, fileBaseName);
+            return Optional.empty();
+        }
+        Optional<Path> downloaded = findDownloaded(directory, fileBaseName);
+        if (downloaded.isEmpty()) {
+            deleteMatching(directory, fileBaseName);
+        }
+        return downloaded;
+    }
+
+    public static String safeFileBaseName(String raw) {
+        String cleaned = raw == null ? "" : raw.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (cleaned.isEmpty()) {
+            return "track";
+        }
+        return cleaned.length() <= MAX_FILE_BASE_NAME_LENGTH
+                ? cleaned
+                : cleaned.substring(0, MAX_FILE_BASE_NAME_LENGTH);
+    }
+
+    private static Optional<Path> findDownloaded(Path directory, String fileBaseName) {
+        try (Stream<Path> files = Files.list(directory)) {
+            return files
+                    .filter(path -> path.getFileName().toString().startsWith(fileBaseName + "."))
+                    .filter(path -> !path.getFileName().toString().endsWith(".part"))
+                    .filter(Files::isRegularFile)
+                    .findFirst();
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static void deleteMatching(Path directory, String fileBaseName) {
+        try (Stream<Path> files = Files.list(directory)) {
+            files.filter(path -> path.getFileName().toString().startsWith(fileBaseName + "."))
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException ignored) {
+                        }
+                    });
+        } catch (IOException ignored) {
+        }
     }
 
     static Optional<YtDlpMedia> parse(JsonBrowser json) {

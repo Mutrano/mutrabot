@@ -31,8 +31,6 @@ public final class AudioPlayerSendHandler implements AudioSendHandler {
 
     @Override
     public ByteBuffer provide20MsAudio() {
-        buffer.clear();
-        buffer.put(frame.getData(), 0, frame.getDataLength());
         buffer.flip();
         return buffer;
     }

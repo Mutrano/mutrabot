@@ -19,6 +19,7 @@ DISCORD_TOKEN*
 Thumbs.db
 *.tmp
 *.swp
+logs/
 __pycache__/
 *.pyc
 .agents/

@@ -32,6 +32,10 @@ public final class BotApplication {
     }
 
     public static void main(String[] args) {
+        if (args.length > 0 && "--youtube-oauth".equals(args[0])) {
+            YoutubeOAuth.authorize();
+            return;
+        }
         DotEnv dotEnv = DotEnv.load();
         String token = dotEnv.get("DISCORD_TOKEN");
         if (token == null || token.isBlank()) {
@@ -44,7 +48,10 @@ public final class BotApplication {
     }
 
     static void wire(JDA jda, DotEnv dotEnv) {
-        AudioPlayerManager manager = AudioConfig.playerManager();
+        AudioPlayerManager manager = AudioConfig.playerManager(
+                dotEnv.get("YOUTUBE_REFRESH_TOKEN"),
+                dotEnv.get("YOUTUBE_PO_TOKEN"),
+                dotEnv.get("YOUTUBE_VISITOR_DATA"));
         TrackAudioRegistry registry = new TrackAudioRegistry();
         InMemoryQueueAdapter queues = new InMemoryQueueAdapter();
         LavaplayerResolverAdapter resolver = new LavaplayerResolverAdapter(

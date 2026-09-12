@@ -54,6 +54,22 @@ O hook `pre-push` roda gitleaks nos commits que estão sendo enviados e bloqueia
 
 As respostas são em português. Qualquer membro que possa enviar mensagens usa todos os comandos.
 
+## YouTube bloqueando ("sign in to confirm you're not a bot")
+
+Se o `/play` de links ou buscas do YouTube falhar com "a fonte bloqueou ou restringiu o acesso", o YouTube está exigindo autenticação. Gere um refresh token OAuth uma vez:
+
+```powershell
+.\mvnw.cmd exec:java "-Dexec.args=--youtube-oauth"
+```
+
+O log mostra uma URL e um código. Use uma conta **burner** (não a principal) em https://www.google.com/device, informe o código e espere. Quando autorizar, o console imprime:
+
+```dotenv
+YOUTUBE_REFRESH_TOKEN=...
+```
+
+Cole no `.env` e reinicie o bot. Alternativa sem conta: gere `poToken` e `visitorData` com o https://github.com/iv-org/youtube-trusted-session-generator e preencha `YOUTUBE_PO_TOKEN` e `YOUTUBE_VISITOR_DATA` no `.env`.
+
 ## Qualidade
 
 ```powershell

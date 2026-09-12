@@ -1,0 +1,85 @@
+package com.mutrabot.adapter.in.discord;
+
+import com.mutrabot.application.port.in.HelpUseCase;
+import com.mutrabot.application.port.in.ListQueueUseCase;
+import com.mutrabot.application.port.in.PingUseCase;
+import com.mutrabot.application.port.in.PlayUseCase;
+import com.mutrabot.application.port.in.ResumeUseCase;
+import com.mutrabot.application.port.in.SkipUseCase;
+import com.mutrabot.application.port.in.StopUseCase;
+import com.mutrabot.application.port.out.InteractionResponderPort;
+import com.mutrabot.application.service.BotMessages;
+import com.mutrabot.domain.command.BotCommand;
+import com.mutrabot.domain.model.GuildId;
+import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.hooks.ListenerAdapter;
+
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.Executor;
+
+public final class JdaCommandListener extends ListenerAdapter {
+
+    private final Executor executor;
+    private final PlayUseCase playUseCase;
+    private final StopUseCase stopUseCase;
+    private final ResumeUseCase resumeUseCase;
+    private final SkipUseCase skipUseCase;
+    private final ListQueueUseCase listQueueUseCase;
+    private final PingUseCase pingUseCase;
+    private final HelpUseCase helpUseCase;
+    private final JdaAnnouncer announcer;
+
+    public JdaCommandListener(
+            Executor executor,
+            PlayUseCase playUseCase,
+            StopUseCase stopUseCase,
+            ResumeUseCase resumeUseCase,
+            SkipUseCase skipUseCase,
+            ListQueueUseCase listQueueUseCase,
+            PingUseCase pingUseCase,
+            HelpUseCase helpUseCase,
+            JdaAnnouncer announcer) {
+        this.executor = Objects.requireNonNull(executor, "executor");
+        this.playUseCase = Objects.requireNonNull(playUseCase, "playUseCase");
+        this.stopUseCase = Objects.requireNonNull(stopUseCase, "stopUseCase");
+        this.resumeUseCase = Objects.requireNonNull(resumeUseCase, "resumeUseCase");
+        this.skipUseCase = Objects.requireNonNull(skipUseCase, "skipUseCase");
+        this.listQueueUseCase = Objects.requireNonNull(listQueueUseCase, "listQueueUseCase");
+        this.pingUseCase = Objects.requireNonNull(pingUseCase, "pingUseCase");
+        this.helpUseCase = Objects.requireNonNull(helpUseCase, "helpUseCase");
+        this.announcer = Objects.requireNonNull(announcer, "announcer");
+    }
+
+    @Override
+    public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
+        Optional<BotCommand> mapped = CommandMapper.map(event);
+        if (mapped.isEmpty()) {
+            event.reply(BotMessages.unknownCommand()).setEphemeral(true).queue();
+            return;
+        }
+        BotCommand command = mapped.get();
+        Guild guild = event.getGuild();
+        if (guild != null) {
+            announcer.register(new GuildId(guild.getId()), event.getChannel());
+        }
+        if (command instanceof BotCommand.PlayCmd) {
+            event.deferReply().queue();
+        }
+        InteractionResponderPort responder = new JdaResponderAdapter(event);
+        executor.execute(() -> dispatch(command, responder));
+    }
+
+    void dispatch(BotCommand command, InteractionResponderPort responder) {
+        switch (command) {
+            case BotCommand.PlayCmd play -> playUseCase.play(play, responder);
+            case BotCommand.StopCmd stop -> stopUseCase.stop(stop, responder);
+            case BotCommand.ResumeCmd resume -> resumeUseCase.resume(resume, responder);
+            case BotCommand.SkipCmd skip -> skipUseCase.skip(skip, responder);
+            case BotCommand.QueueCmd queue -> listQueueUseCase.list(queue, responder);
+            case BotCommand.PingCmd ping -> pingUseCase.ping(ping, responder);
+            case BotCommand.HelpCmd help -> helpUseCase.help(help, responder);
+        }
+    }
+}

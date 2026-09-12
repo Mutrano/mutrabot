@@ -1,0 +1,14 @@
+target/
+.git/
+.gitignore
+.idea/
+.vscode/
+*.iml
+*.log
+.env
+.env.*
+DISCORD_TOKEN*
+specs/
+.agents/
+.specify/
+README.md

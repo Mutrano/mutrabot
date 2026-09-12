@@ -1,0 +1,54 @@
+#!/bin/sh
+set -u
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-push: gitleaks nao encontrado; push bloqueado." >&2
+    echo "Instale com 'winget install gitleaks' ou 'brew install gitleaks'." >&2
+    echo "Mais opcoes: https://github.com/gitleaks/gitleaks#installing" >&2
+    exit 1
+fi
+
+if gitleaks git --help >/dev/null 2>&1; then
+    MODE=git
+else
+    MODE=detect
+fi
+
+scan() {
+    if [ "$MODE" = "git" ]; then
+        gitleaks git --redact "$@"
+    else
+        gitleaks detect --redact "$@"
+    fi
+}
+
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+    local_sha=$(printf '%s' "${local_sha:-}" | tr -d '\r')
+    remote_sha=$(printf '%s' "${remote_sha:-}" | tr -d '\r')
+    if [ -z "$local_sha" ]; then
+        continue
+    fi
+    case "$local_sha" in
+        0000000000000000000000000000000000000000)
+            continue
+            ;;
+    esac
+    case "${remote_sha:-}" in
+        "" | 0000000000000000000000000000000000000000)
+            echo "pre-push: branch novo ($local_ref); escaneando todo o historico"
+            scan || status=1
+            ;;
+        *)
+            echo "pre-push: escaneando $remote_sha..$local_sha"
+            scan "--log-opts=$remote_sha..$local_sha" || status=1
+            ;;
+    esac
+done
+
+if [ "$status" -ne 0 ]; then
+    echo "pre-push: gitleaks encontrou possiveis segredos; push bloqueado." >&2
+    exit 1
+fi
+
+echo "pre-push: gitleaks ok"

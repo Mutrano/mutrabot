@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.mutrabot</groupId>
+  <artifactId>mutrabot</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>mutrabot</name>
+  <description>Discord music bot: JDA 6 + LavaPlayer yoke, virtual threads, hexagonal architecture</description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <maven.compiler.release>25</maven.compiler.release>
+
+    <jda.version>6.6.0</jda.version>
+    <jdave.version>0.1.8</jdave.version>
+    <lavaplayer.version>2.2.3</lavaplayer.version>
+    <youtube-source.version>1.18.2</youtube-source.version>
+    <logback.version>1.5.38</logback.version>
+
+    <junit.version>5.14.4</junit.version>
+    <mockito.version>5.23.0</mockito.version>
+    <assertj.version>3.27.7</assertj.version>
+    <archunit.version>1.5.0</archunit.version>
+
+    <jacoco.version>0.8.15</jacoco.version>
+    <pitest.version>1.30.0</pitest.version>
+    <pitest-junit5.version>1.2.3</pitest-junit5.version>
+
+    <argLine>-XX:+EnableDynamicAgentLoading</argLine>
+  </properties>
+
+  <repositories>
+    <repository>
+      <id>lavalink-releases</id>
+      <url>https://maven.lavalink.dev/releases</url>
+    </repository>
+  </repositories>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>net.dv8tion</groupId>
+      <artifactId>JDA</artifactId>
+      <version>${jda.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>club.minnced</groupId>
+      <artifactId>jdave-api</artifactId>
+      <version>${jdave.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>club.minnced</groupId>
+      <artifactId>jdave-native-win-x86-64</artifactId>
+      <version>${jdave.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>club.minnced</groupId>
+      <artifactId>jdave-native-linux-x86-64</artifactId>
+      <version>${jdave.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>dev.arbjerg</groupId>
+      <artifactId>lavaplayer</artifactId>
+      <version>${lavaplayer.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>dev.lavalink.youtube</groupId>
+      <artifactId>v2</artifactId>
+      <version>${youtube-source.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>${logback.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <version>${mockito.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>${assertj.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <version>${archunit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+        <configuration>
+          <release>${maven.compiler.release}</release>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.6</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.6.4</version>
+        <configuration>
+          <mainClass>com.mutrabot.bootstrap.BotApplication</mainClass>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.version}</version>
+        <configuration>
+          <excludes>
+            <!-- wiring/config only: no logic to unit test -->
+            <exclude>com/mutrabot/bootstrap/**</exclude>
+            <exclude>com/mutrabot/adapter/in/discord/JdaCommandListener*</exclude>
+            <exclude>com/mutrabot/adapter/out/audio/AudioPlayerSendHandler*</exclude>
+            <exclude>com/mutrabot/adapter/out/audio/LavaplayerPlaybackAdapter*</exclude>
+            <exclude>com/mutrabot/adapter/out/audio/OEmbedMetadataLookup*</exclude>
+          </excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.90</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.90</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <version>${pitest.version}</version>
+        <configuration>
+          <targetClasses>
+            <param>com.mutrabot.domain.*</param>
+            <param>com.mutrabot.application.*</param>
+          </targetClasses>
+          <targetTests>
+            <param>com.mutrabot.*</param>
+          </targetTests>
+          <excludedClasses>
+            <param>com.mutrabot.bootstrap.*</param>
+          </excludedClasses>
+          <mutators>
+            <mutator>DEFAULTS</mutator>
+          </mutators>
+          <mutationThreshold>60</mutationThreshold>
+          <threads>4</threads>
+          <timestampedReports>false</timestampedReports>
+          <withHistory>false</withHistory>
+          <outputFormats>
+            <param>HTML</param>
+            <param>XML</param>
+          </outputFormats>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-junit5-plugin</artifactId>
+            <version>${pitest-junit5.version}</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+    </plugins>
+  </build>
+</project>

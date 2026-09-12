@@ -56,7 +56,7 @@ As respostas são em português. Qualquer membro que possa enviar mensagens usa 
 
 ## YouTube bloqueando ("sign in to confirm you're not a bot")
 
-Se o `/play` de links ou buscas do YouTube falhar com "a fonte bloqueou ou restringiu o acesso", o YouTube está exigindo autenticação. Gere um refresh token OAuth uma vez:
+Vídeos normais tocam sem configuração. Vídeos com restrição de idade ou que o YouTube marcar como "requer login" só tocam com OAuth. Gere um refresh token uma vez:
 
 ```powershell
 .\mvnw.cmd exec:java "-Dexec.args=--youtube-oauth"
@@ -68,7 +68,7 @@ O log mostra uma URL e um código. Use uma conta **burner** (não a principal) e
 YOUTUBE_REFRESH_TOKEN=...
 ```
 
-Cole no `.env` e reinicie o bot. Alternativa sem conta: gere `poToken` e `visitorData` com o https://github.com/iv-org/youtube-trusted-session-generator e preencha `YOUTUBE_PO_TOKEN` e `YOUTUBE_VISITOR_DATA` no `.env`.
+Cole no `.env` e reinicie o bot. Alternativa sem conta: gere `poToken` e `visitorData` com o https://github.com/iv-org/youtube-trusted-session-generator ou o https://github.com/Brainicism/bgutil-ytdlp-pot-provider e preencha `YOUTUBE_PO_TOKEN` e `YOUTUBE_VISITOR_DATA` no `.env`. O poToken expira em poucas horas e pode não funcionar com todos os clients.
 
 ## Qualidade
 

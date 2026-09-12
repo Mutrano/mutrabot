@@ -18,9 +18,10 @@ public final class AudioPlayerSendHandler implements AudioSendHandler {
     public AudioPlayerSendHandler(AudioPlayer player) {
         this.player = Objects.requireNonNull(player, "player");
         AudioDataFormat format = StandardAudioDataFormats.DISCORD_OPUS;
+        this.buffer = ByteBuffer.allocate(format.maximumChunkSize());
         this.frame = new MutableAudioFrame();
         this.frame.setFormat(format);
-        this.buffer = ByteBuffer.allocate(format.maximumChunkSize());
+        this.frame.setBuffer(buffer);
     }
 
     @Override

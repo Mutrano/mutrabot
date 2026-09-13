@@ -4,6 +4,7 @@ import com.mutrabot.application.port.out.AudioPlaybackPort;
 import com.mutrabot.domain.model.GuildId;
 import com.mutrabot.domain.model.Track;
 import com.mutrabot.domain.model.TrackFailureKind;
+import com.mutrabot.domain.model.TrackId;
 import com.mutrabot.domain.model.VoiceChannelId;
 import com.mutrabot.domain.model.VoiceSession;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
@@ -34,6 +35,7 @@ public final class LavaplayerPlaybackAdapter implements AudioPlaybackPort {
     private final TrackAudioRegistry registry;
     private final ConcurrentHashMap<String, GuildPlayer> players = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, VoiceSession> sessions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, TrackId> currentTracks = new ConcurrentHashMap<>();
     private volatile Consumer<GuildId> trackFinishedListener = guild -> {
     };
 
@@ -112,6 +114,10 @@ public final class LavaplayerPlaybackAdapter implements AudioPlaybackPort {
         }
         guildPlayer.player().setPaused(false);
         guildPlayer.player().playTrack(audioTrack);
+        TrackId previous = currentTracks.put(guild.value(), track.id());
+        if (previous != null && !previous.equals(track.id())) {
+            registry.remove(previous);
+        }
         touch(guild);
     }
 
@@ -135,6 +141,10 @@ public final class LavaplayerPlaybackAdapter implements AudioPlaybackPort {
         Guild voiceGuild = guild(guild);
         if (voiceGuild != null) {
             voiceGuild.getAudioManager().closeAudioConnection();
+        }
+        TrackId playing = currentTracks.remove(guild.value());
+        if (playing != null) {
+            registry.remove(playing);
         }
         sessions.remove(guild.value());
         players.remove(guild.value());

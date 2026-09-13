@@ -48,6 +48,22 @@ public final class BotMessages {
         return "🔇 Entre em um canal de voz primeiro e tente de novo.";
     }
 
+    public static String joined() {
+        return "🔊 Entrei no canal de voz.";
+    }
+
+    public static String alreadyInVoice() {
+        return "ℹ️ Já estou no seu canal de voz.";
+    }
+
+    public static String left() {
+        return "👋 Saí do canal de voz e limpei a fila.";
+    }
+
+    public static String notInVoice() {
+        return "ℹ️ Não estou em um canal de voz.";
+    }
+
     public static String emptyQuery() {
         return "✏️ Informe um link ou o nome de uma música para eu tocar.";
     }
@@ -125,6 +141,8 @@ public final class BotMessages {
         return """
                 🎶 **mutrabot** — comandos disponíveis:
                 /play <link ou nome> — toca uma música, busca ou playlist
+                /join — entra no seu canal de voz
+                /leave — sai do canal de voz e limpa a fila
                 /stop — pausa a reprodução atual
                 /resume — retoma a reprodução pausada
                 /skip — pula para a próxima faixa da fila

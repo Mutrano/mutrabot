@@ -7,10 +7,15 @@ import java.util.concurrent.TimeUnit;
 
 public final class YtDlpProcessRunner implements YtDlpResolver.CommandRunner {
 
-    private static final long TIMEOUT_SECONDS = 90;
+    private static final long TIMEOUT_SECONDS = 300;
 
     @Override
     public Result run(List<String> command) {
+        return run(command, TIMEOUT_SECONDS);
+    }
+
+    @Override
+    public Result run(List<String> command, long timeoutSeconds) {
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectErrorStream(false);
         try {
@@ -23,7 +28,7 @@ public final class YtDlpProcessRunner implements YtDlpResolver.CommandRunner {
                 }
             });
             String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 process.destroyForcibly();
                 return new Result(-1, stdout, "tempo esgotado");
             }

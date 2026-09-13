@@ -1,11 +1,12 @@
 # mutrabot
 
-Bot de música para Discord em Java 25. Usa JDA 6 para interações e voz, LavaPlayer com youtube-source para áudio e arquitetura hexagonal (domínio puro, portas e adaptadores).
+Bot de música para Discord em Java 25. Usa JDA 6 para interações e voz, LavaPlayer para áudio (YouTube via `yt-dlp`) e arquitetura hexagonal (domínio puro, portas e adaptadores).
 
 ## Requisitos
 
 - JDK 25 no PATH (`java -version`).
 - Maven Wrapper no repositório (`./mvnw -version` usa Maven 3.9.15).
+- `yt-dlp` instalado para tocar YouTube (links, buscas e playlists): `python -m pip install -U --user yt-dlp`.
 - Voz do Discord exige DAVE. O projeto inclui JDAVE (`club.minnced:jdave-api` e nativos para Windows/Linux x86-64) e configura `DaveSessionFactory` no `JdaConfig`. Sem isso o bot entra em loop de reconexão de voz.
 - Bot criado no Discord Developer Portal com o intent `GUILD_VOICE_STATES` e permissões de Conectar, Falar e Enviar Mensagens.
 - Token em variável de ambiente. Nunca versione o token.
@@ -45,6 +46,8 @@ O hook `pre-push` roda gitleaks nos commits que estão sendo enviados e bloqueia
 ## Comandos
 
 - `/play <link ou nome>`: toca um link de faixa (YouTube, SoundCloud), um termo de busca ou um link de playlist. Spotify e Tidal são resolvidos por metadados e tocados pela melhor correspondência no YouTube.
+- `/join`: entra no canal de voz em que você está.
+- `/leave`: sai do canal de voz e limpa a fila.
 - `/stop`: pausa a faixa atual e mantém a fila.
 - `/resume`: retoma do ponto onde parou.
 - `/skip`: encerra a faixa atual e inicia a próxima; com a fila vazia, anuncia o fim e desconecta após 5 minutos ociosos.
@@ -79,21 +82,17 @@ Sem essas variáveis a feature fica desabilitada e o bot de música continua nor
 
 ## YouTube
 
-Vídeos comuns tocam direto pelo `youtube-source`. Alguns vídeos que o YouTube marca com "requires login" (conteúdo restrito ou bloqueio anti-bot) falham nesse extrator. Para esses casos o bot usa o `yt-dlp` como resolvedor preferido quando ele está instalado:
+O YouTube é resolvido inteiramente pelo `yt-dlp` (vídeo único, busca e playlist). Para vídeo único, o bot baixa a faixa (`bestaudio`) para um arquivo temporário antes de tocar e reproduz o arquivo local. O download usa requisições em partes (`--http-chunk-size 10M`), o que evita o throttling de conexão única do YouTube — streaming direto costuma ser limitado a ~2x o tempo real e causa cortes quando o buffer esgota. Se o download falhar, o bot volta para streaming direto. Lives não são baixadas.
 
 ```powershell
 python -m pip install -U --user yt-dlp
 ```
 
-O bot detecta `yt-dlp` no PATH, depois `python -m yt_dlp`, e usa Node como runtime JS se disponível. Se o executável estiver em outro lugar, preencha `YTDLP_PATH` no `.env`. Sem yt-dlp, o bot continua funcionando com o `youtube-source` e avisa quando um vídeo não puder ser tocado.
+O cache fica em `%TEMP%\mutrabot-audio` (ou o equivalente no Linux/macOS), é limpo na inicialização e os arquivos são removidos quando a faixa sai de reprodução.
 
-Alternativa para vídeos restritos: OAuth com conta burner.
+O bot detecta `yt-dlp` no PATH, depois `python -m yt_dlp`, e usa Node como runtime JS se disponível. Se o executável estiver em outro lugar, defina a variável de ambiente `YTDLP_PATH`. Sem o `yt-dlp`, o bot avisa que o resolvedor de YouTube não está disponível e mantém a fila.
 
-```powershell
-.\mvnw.cmd exec:java "-Dexec.args=--youtube-oauth"
-```
-
-O log mostra uma URL e um código. Autorize em https://www.google.com/device (conta burner, não a principal) e cole o `YOUTUBE_REFRESH_TOKEN=...` impresso no `.env`. OAuth não é necessário se o yt-dlp resolver seus vídeos.
+Playlists são resolvidas em uma única chamada ao `yt-dlp`, com limite de 100 faixas por pedido. Um link `watch?v=...&list=RD...` (mix do YouTube) toca só o vídeo; um `list=PL...` enfileira a playlist.
 
 ## Qualidade
 
@@ -114,7 +113,7 @@ src/main/java/com/mutrabot/
 ├── domain/            # modelo, comandos selados, resultados de resolução (apenas java.base)
 ├── application/       # portas de entrada/saída e serviços de caso de uso
 ├── adapter/in/discord # listener JDA, mapeamento e respostas
-├── adapter/out/audio  # LavaPlayer, youtube-source, registro de áudio
+├── adapter/out/audio  # LavaPlayer, yt-dlp, registro de áudio
 ├── adapter/out/persistence # fila em memória por guild
 └── bootstrap/         # wiring manual, JDA, executores e comandos
 ```

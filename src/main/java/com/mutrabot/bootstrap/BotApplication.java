@@ -13,6 +13,8 @@ import com.mutrabot.adapter.out.streaming.HttpLivestreamSidecarAdapter;
 import com.mutrabot.application.port.out.LivestreamControlPort;
 import com.mutrabot.application.service.HelpCommandService;
 import com.mutrabot.application.service.IdleDisconnectService;
+import com.mutrabot.application.service.JoinCommandService;
+import com.mutrabot.application.service.LeaveCommandService;
 import com.mutrabot.application.service.ListQueueService;
 import com.mutrabot.application.service.LivestreamJoinService;
 import com.mutrabot.application.service.LivestreamLeaveService;
@@ -40,10 +42,6 @@ public final class BotApplication {
     }
 
     public static void main(String[] args) {
-        if (args.length > 0 && "--youtube-oauth".equals(args[0])) {
-            YoutubeOAuth.authorize();
-            return;
-        }
         DotEnv dotEnv = DotEnv.load();
         String token = dotEnv.get("DISCORD_TOKEN");
         if (token == null || token.isBlank()) {
@@ -56,10 +54,7 @@ public final class BotApplication {
     }
 
     static void wire(JDA jda, DotEnv dotEnv) {
-        AudioPlayerManager manager = AudioConfig.playerManager(
-                dotEnv.get("YOUTUBE_REFRESH_TOKEN"),
-                dotEnv.get("YOUTUBE_PO_TOKEN"),
-                dotEnv.get("YOUTUBE_VISITOR_DATA"));
+        AudioPlayerManager manager = AudioConfig.playerManager();
         TrackAudioRegistry registry = new TrackAudioRegistry();
         InMemoryQueueAdapter queues = new InMemoryQueueAdapter();
         LavaplayerResolverAdapter resolver = new LavaplayerResolverAdapter(
@@ -67,6 +62,7 @@ public final class BotApplication {
                 registry,
                 new OEmbedMetadataLookup(),
                 YtDlpResolver.detect(new YtDlpProcessRunner()));
+        resolver.clearCache();
         LavaplayerPlaybackAdapter playback = new LavaplayerPlaybackAdapter(manager, () -> jda, registry);
         JdaAnnouncer announcer = new JdaAnnouncer();
 
@@ -74,6 +70,8 @@ public final class BotApplication {
                 ExecutorConfig.idleScheduler(), queues, playback, announcer);
 
         PlayCommandService play = new PlayCommandService(resolver, playback, queues, idleDisconnect);
+        JoinCommandService join = new JoinCommandService(playback, idleDisconnect);
+        LeaveCommandService leave = new LeaveCommandService(queues, playback, idleDisconnect);
         StopCommandService stop = new StopCommandService(queues, playback);
         ResumeCommandService resume = new ResumeCommandService(queues, playback);
         SkipCommandService skip = new SkipCommandService(queues, playback, idleDisconnect);
@@ -105,7 +103,7 @@ public final class BotApplication {
         playback.setTrackFailureListener(playbackFailure::onTrackFailed);
 
         JdaCommandListener listener = new JdaCommandListener(
-                ExecutorConfig.commandExecutor(), play, stop, resume, skip, listQueue, ping, help,
+                ExecutorConfig.commandExecutor(), play, join, leave, stop, resume, skip, listQueue, ping, help,
                 livestreamJoin, livestreamLeave, announcer);
         jda.addEventListener(listener);
         registerCommands(jda, dotEnv.get("DISCORD_GUILD_ID"));
@@ -126,6 +124,8 @@ public final class BotApplication {
         List<CommandData> commands = List.of(
                 Commands.slash("play", "Toca uma música por link, busca ou playlist")
                         .addOptions(new OptionData(OptionType.STRING, "query", "Link ou nome da música", true)),
+                Commands.slash("join", "Entra no seu canal de voz"),
+                Commands.slash("leave", "Sai do canal de voz e limpa a fila"),
                 Commands.slash("stop", "Pausa a reprodução atual"),
                 Commands.slash("resume", "Retoma a reprodução pausada"),
                 Commands.slash("skip", "Pula para a próxima faixa da fila"),

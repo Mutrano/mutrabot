@@ -66,6 +66,14 @@ class BotMessagesTest {
     }
 
     @Test
+    void voicePresenceMessagesMatchContract() {
+        assertThat(BotMessages.joined()).isEqualTo("🔊 Entrei no canal de voz.");
+        assertThat(BotMessages.alreadyInVoice()).isEqualTo("ℹ️ Já estou no seu canal de voz.");
+        assertThat(BotMessages.left()).isEqualTo("👋 Saí do canal de voz e limpei a fila.");
+        assertThat(BotMessages.notInVoice()).isEqualTo("ℹ️ Não estou em um canal de voz.");
+    }
+
+    @Test
     void miscMessages() {
         assertThat(BotMessages.emptyQuery()).isNotBlank();
         assertThat(BotMessages.idleDisconnected()).isNotBlank();

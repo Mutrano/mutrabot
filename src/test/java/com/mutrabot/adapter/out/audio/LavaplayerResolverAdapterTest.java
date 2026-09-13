@@ -3,6 +3,7 @@ package com.mutrabot.adapter.out.audio;
 import com.mutrabot.domain.model.Requester;
 import com.mutrabot.domain.model.SourceKind;
 import com.mutrabot.domain.model.Track;
+import com.mutrabot.domain.model.TrackId;
 import com.mutrabot.domain.result.ResolverResult;
 import com.mutrabot.support.TestData;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
@@ -13,7 +14,12 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
 import com.sedmelluq.discord.lavaplayer.track.BasicAudioPlaylist;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +29,7 @@ import java.util.function.Consumer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -112,46 +119,59 @@ class LavaplayerResolverAdapterTest {
     }
 
     @Test
-    void directYoutubeUrlKeepsYoutubeSource() {
-        AudioTrack audioTrack = audioTrack("vid", "Vídeo");
-        stubLoad(handler -> handler.trackLoaded(audioTrack));
-
+    void youtubeUrlWithoutYtDlpFails() {
         ResolverResult result = adapter.resolve("https://youtu.be/vid", requester);
 
-        verify(manager).loadItemOrdered(any(), eq("https://youtu.be/vid"), any());
-        Track track = ((ResolverResult.ResolvedTrack) result).track();
-        assertThat(track.source()).isEqualTo(SourceKind.YOUTUBE);
-        assertThat(track.sourceUrl()).isEqualTo("https://youtu.be/vid");
+        assertThat(result).isInstanceOf(ResolverResult.LoadFailed.class);
+        assertThat(((ResolverResult.LoadFailed) result).retryable()).isTrue();
     }
 
     @Test
-    void playlistUrlReturnsOrderedPlaylist() {
-        AudioTrack one = audioTrack("p1", "Faixa 1");
-        AudioTrack two = audioTrack("p2", "Faixa 2");
-        AudioTrack three = audioTrack("p3", "Faixa 3");
-        BasicAudioPlaylist playlist = new BasicAudioPlaylist(
-                "minha playlist", List.of(one, two, three), null, false);
-        stubLoad(handler -> handler.playlistLoaded(playlist));
+    void youtubePlaylistResolvesEntriesInOrderThroughYtDlp() {
+        String playlistJson = "{\"id\":\"a1\",\"title\":\"Faixa 1\",\"url\":\"https://stream.example/1\","
+                + "\"webpage_url\":\"https://youtu.be/a1\"}\n"
+                + "{\"id\":\"a2\",\"title\":\"Faixa 2\",\"url\":\"https://stream.example/2\","
+                + "\"webpage_url\":\"https://youtu.be/a2\"}";
+        when(manager.loadItemOrdered(any(), anyString(), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    String target = invocation.getArgument(1);
+                    AudioLoadResultHandler handler = invocation.getArgument(2);
+                    if (target.endsWith("/1")) {
+                        handler.trackLoaded(audioTrack("a1", "Faixa 1"));
+                    } else if (target.endsWith("/2")) {
+                        handler.trackLoaded(audioTrack("a2", "Faixa 2"));
+                    } else {
+                        handler.noMatches();
+                    }
+                    return null;
+                });
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(playlistJson));
 
-        ResolverResult result = adapter.resolve("https://youtube.com/playlist?list=x", requester);
+        ResolverResult result = adapter.resolve("https://youtube.com/playlist?list=PL1", requester);
 
         assertThat(result).isInstanceOf(ResolverResult.ResolvedPlaylist.class);
         ResolverResult.ResolvedPlaylist resolved = (ResolverResult.ResolvedPlaylist) result;
-        assertThat(resolved.tracks()).extracting(Track::title)
-                .containsExactly("Faixa 1", "Faixa 2", "Faixa 3");
-        assertThat(resolved.totalReported()).isEqualTo(3);
-        assertThat(resolved.ignored()).isZero();
+        assertThat(resolved.tracks()).extracting(Track::title).containsExactly("Faixa 1", "Faixa 2");
+        assertThat(resolved.tracks()).allMatch(track -> track.source() == SourceKind.YOUTUBE);
         assertThat(resolved.tracks()).allMatch(track -> track.requestedBy().equals(requester));
+        assertThat(ytDlpCommands).hasSize(1);
+        assertThat(ytDlpCommands.get(0)).contains("--yes-playlist");
     }
 
     @Test
-    void emptyPlaylistIsNotFound() {
-        BasicAudioPlaylist playlist = new BasicAudioPlaylist("vazia", List.of(), null, false);
-        stubLoad(handler -> handler.playlistLoaded(playlist));
+    void emptyYoutubePlaylistIsNotFound() {
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(""));
 
-        ResolverResult result = adapter.resolve("https://youtube.com/playlist?list=x", requester);
+        ResolverResult result = adapter.resolve("https://youtube.com/playlist?list=PL1", requester);
 
-        assertThat(result).isEqualTo(new ResolverResult.NotFound("https://youtube.com/playlist?list=x"));
+        assertThat(result).isEqualTo(new ResolverResult.NotFound("https://youtube.com/playlist?list=PL1"));
+    }
+
+    @Test
+    void youtubePlaylistWithoutYtDlpFails() {
+        ResolverResult result = adapter.resolve("https://youtube.com/playlist?list=PL1", requester);
+
+        assertThat(result).isInstanceOf(ResolverResult.LoadFailed.class);
     }
 
     @Test
@@ -287,11 +307,47 @@ class LavaplayerResolverAdapterTest {
 
     private final List<List<String>> ytDlpCommands = new ArrayList<>();
 
+    @TempDir
+    Path tempDir;
+
     private YtDlpResolver ytDlp(String stdout) {
+        return ytDlp(stdout, true);
+    }
+
+    private YtDlpResolver ytDlp(String stdout, boolean downloadSucceeds) {
         return new YtDlpResolver(command -> {
             ytDlpCommands.add(List.copyOf(command));
-            return new YtDlpResolver.CommandRunner.Result(0, stdout, "");
+            if (command.contains("-j")) {
+                return new YtDlpResolver.CommandRunner.Result(0, stdout, "");
+            }
+            int outputIndex = command.indexOf("-o");
+            if (outputIndex < 0 || !downloadSucceeds) {
+                return new YtDlpResolver.CommandRunner.Result(1, "", "download falhou");
+            }
+            Path template = Path.of(command.get(outputIndex + 1));
+            Path file = template.getParent().resolve(
+                    template.getFileName().toString().replace("%(ext)s", "webm"));
+            try {
+                Files.createDirectories(file.getParent());
+                Files.writeString(file, "audio");
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            return new YtDlpResolver.CommandRunner.Result(0, "", "");
         }, List.of("yt-dlp"), List.of());
+    }
+
+    private LavaplayerResolverAdapter ytDlpAdapter(YtDlpResolver resolver) {
+        return new LavaplayerResolverAdapter(
+                manager, registry, metadata, LavaplayerResolverAdapter.DEFAULT_TIMEOUT, resolver, tempDir);
+    }
+
+    private void stubLocalTrack(AudioTrack audioTrack) {
+        when(manager.loadItemOrdered(any(), argThat((String id) -> id != null && id.endsWith(".webm")), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    invocation.<AudioLoadResultHandler>getArgument(2).trackLoaded(audioTrack);
+                    return null;
+                });
     }
 
     private static final String YTDLP_JSON = """
@@ -299,15 +355,16 @@ class LavaplayerResolverAdapterTest {
             "webpage_url":"https://www.youtube.com/watch?v=ytdlp1",\
             "url":"https://stream.example/audio","is_live":false}""";
 
+    private static final String YTDLP_LIVE_JSON = """
+            {"id":"live1","title":"Ao vivo","uploader":"Canal","duration":0,\
+            "webpage_url":"https://www.youtube.com/watch?v=live1",\
+            "url":"https://stream.example/live.m3u8","is_live":true}""";
+
     @Test
-    void ytDlpStreamUrlIsPlayedDirectlyForYoutubeUrl() {
-        AudioTrack streamTrack = mock(AudioTrack.class);
-        when(manager.loadItemOrdered(any(), eq("https://stream.example/audio"), any(AudioLoadResultHandler.class)))
-                .thenAnswer(invocation -> {
-                    invocation.<AudioLoadResultHandler>getArgument(2).trackLoaded(streamTrack);
-                    return null;
-                });
-        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+    void ytDlpDownloadsFileBeforePlayingForYoutubeUrl() {
+        AudioTrack localTrack = mock(AudioTrack.class);
+        stubLocalTrack(localTrack);
+        adapter = ytDlpAdapter(ytDlp(YTDLP_JSON));
 
         ResolverResult result = adapter.resolve("https://www.youtube.com/watch?v=Yjfo2vzYVno", requester);
 
@@ -318,19 +375,31 @@ class LavaplayerResolverAdapterTest {
         assertThat(track.source()).isEqualTo(SourceKind.YOUTUBE);
         assertThat(track.sourceUrl()).isEqualTo("https://www.youtube.com/watch?v=Yjfo2vzYVno");
         assertThat(track.duration()).isEqualTo(Duration.ofSeconds(200));
-        assertThat(registry.find(track.id())).contains(streamTrack);
-        assertThat(ytDlpCommands).hasSize(1);
+        assertThat(registry.find(track.id())).contains(localTrack);
+        assertThat(ytDlpCommands).hasSize(2);
+        assertThat(ytDlpCommands.get(1)).contains("--http-chunk-size", "10M");
+        assertThat(ytDlpCommands.get(1).get(ytDlpCommands.get(1).size() - 1))
+                .isEqualTo("https://stream.example/audio");
+    }
+
+    @Test
+    void ytDlpPlaysSingleVideoForYoutubeWatchUrlWithRadioPlaylist() {
+        AudioTrack localTrack = mock(AudioTrack.class);
+        stubLocalTrack(localTrack);
+        adapter = ytDlpAdapter(ytDlp(YTDLP_JSON));
+
+        ResolverResult result = adapter.resolve(
+                "https://www.youtube.com/watch?v=Yjfo2vzYVno&list=RDYjfo2vzYVno&start_radio=1", requester);
+
+        assertThat(result).isInstanceOf(ResolverResult.ResolvedTrack.class);
+        assertThat(ytDlpCommands).hasSize(2);
+        assertThat(ytDlpCommands.get(0)).contains("--no-playlist");
     }
 
     @Test
     void ytDlpReceivesYoutubeSearchForTextQuery() {
-        AudioTrack streamTrack = mock(AudioTrack.class);
-        when(manager.loadItemOrdered(any(), eq("https://stream.example/audio"), any(AudioLoadResultHandler.class)))
-                .thenAnswer(invocation -> {
-                    invocation.<AudioLoadResultHandler>getArgument(2).trackLoaded(streamTrack);
-                    return null;
-                });
-        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+        stubLocalTrack(mock(AudioTrack.class));
+        adapter = ytDlpAdapter(ytDlp(YTDLP_JSON));
 
         adapter.resolve("artista musica", requester);
 
@@ -338,49 +407,114 @@ class LavaplayerResolverAdapterTest {
     }
 
     @Test
-    void ytDlpFallsBackToYoutubeSourceWhenItFails() {
-        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp("{\"title\":\"sem url\"}"));
-        AudioTrack audioTrack = audioTrack("v1", "Fallback youtube");
-        stubLoad(handler -> handler.trackLoaded(audioTrack));
+    void ytDlpFailureForYoutubeIsLoadFailed() {
+        adapter = new LavaplayerResolverAdapter(
+                manager, registry, metadata, ytDlp("{\"title\":\"sem url\"}"));
 
         ResolverResult result = adapter.resolve("https://www.youtube.com/watch?v=abc", requester);
 
-        assertThat(((ResolverResult.ResolvedTrack) result).track().title()).isEqualTo("Fallback youtube");
-        verify(manager).loadItemOrdered(any(), eq("https://www.youtube.com/watch?v=abc"), any());
+        assertThat(result).isInstanceOf(ResolverResult.LoadFailed.class);
+        assertThat(((ResolverResult.LoadFailed) result).retryable()).isTrue();
     }
 
     @Test
-    void ytDlpFallsBackWhenStreamUrlCannotBeLoaded() {
-        stubLoad(handler -> handler.trackLoaded(audioTrack("v2", "Youtube normal")));
+    void ytDlpStreamsWhenDownloadFails() {
+        AudioTrack streamTrack = mock(AudioTrack.class);
+        when(manager.loadItemOrdered(any(), eq("https://stream.example/audio"), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    invocation.<AudioLoadResultHandler>getArgument(2).trackLoaded(streamTrack);
+                    return null;
+                });
+        adapter = ytDlpAdapter(ytDlp(YTDLP_JSON, false));
+
+        ResolverResult result = adapter.resolve("https://www.youtube.com/watch?v=abc", requester);
+
+        assertThat(result).isInstanceOf(ResolverResult.ResolvedTrack.class);
+        assertThat(registry.find(new TrackId("ytdlp1"))).contains(streamTrack);
+    }
+
+    @Test
+    void ytDlpStreamsLiveWithoutDownloading() {
+        AudioTrack streamTrack = mock(AudioTrack.class);
+        when(manager.loadItemOrdered(any(), eq("https://stream.example/live.m3u8"), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    invocation.<AudioLoadResultHandler>getArgument(2).trackLoaded(streamTrack);
+                    return null;
+                });
+        adapter = ytDlpAdapter(ytDlp(YTDLP_LIVE_JSON));
+
+        ResolverResult result = adapter.resolve("https://www.youtube.com/watch?v=live1", requester);
+
+        assertThat(result).isInstanceOf(ResolverResult.ResolvedTrack.class);
+        assertThat(ytDlpCommands).hasSize(1);
+        assertThat(registry.find(new TrackId("live1"))).contains(streamTrack);
+    }
+
+    @Test
+    void ytDlpFailureWhenDownloadedFileAndStreamCannotBeLoaded() {
+        when(manager.loadItemOrdered(any(), argThat((String id) -> id != null && id.endsWith(".webm")), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    invocation.<AudioLoadResultHandler>getArgument(2).noMatches();
+                    return null;
+                });
         when(manager.loadItemOrdered(any(), eq("https://stream.example/audio"), any(AudioLoadResultHandler.class)))
                 .thenAnswer(invocation -> {
                     invocation.<AudioLoadResultHandler>getArgument(2).noMatches();
                     return null;
                 });
-        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+        adapter = ytDlpAdapter(ytDlp(YTDLP_JSON));
 
         ResolverResult result = adapter.resolve("https://www.youtube.com/watch?v=abc", requester);
 
-        assertThat(((ResolverResult.ResolvedTrack) result).track().title()).isEqualTo("Youtube normal");
+        assertThat(result).isInstanceOf(ResolverResult.LoadFailed.class);
     }
 
     @Test
-    void ytDlpIsSkippedForPlaylistUrls() {
-        AudioTrack one = audioTrack("p1", "Faixa 1");
-        BasicAudioPlaylist playlist = new BasicAudioPlaylist("playlist", List.of(one), null, false);
-        stubLoad(handler -> handler.playlistLoaded(playlist));
-        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+    void ytDlpStreamsWhenDownloadedFileCannotBeLoaded() {
+        AudioTrack streamTrack = mock(AudioTrack.class);
+        when(manager.loadItemOrdered(any(), argThat((String id) -> id != null && id.endsWith(".webm")), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    invocation.<AudioLoadResultHandler>getArgument(2).noMatches();
+                    return null;
+                });
+        when(manager.loadItemOrdered(any(), eq("https://stream.example/audio"), any(AudioLoadResultHandler.class)))
+                .thenAnswer(invocation -> {
+                    invocation.<AudioLoadResultHandler>getArgument(2).trackLoaded(streamTrack);
+                    return null;
+                });
+        adapter = ytDlpAdapter(ytDlp(YTDLP_JSON));
 
-        ResolverResult result = adapter.resolve(
-                "https://www.youtube.com/playlist?list=PL123", requester);
+        ResolverResult result = adapter.resolve("https://www.youtube.com/watch?v=abc", requester);
 
-        assertThat(result).isInstanceOf(ResolverResult.ResolvedPlaylist.class);
-        assertThat(ytDlpCommands).isEmpty();
+        assertThat(result).isInstanceOf(ResolverResult.ResolvedTrack.class);
+        assertThat(registry.find(new TrackId("ytdlp1"))).contains(streamTrack);
+    }
+
+    @Test
+    void youtubePlaylistUrlUsesYtDlp() {
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(""));
+
+        adapter.resolve("https://www.youtube.com/playlist?list=PL123", requester);
+
+        assertThat(ytDlpCommands).hasSize(1);
+        assertThat(ytDlpCommands.get(0)).contains("--yes-playlist");
+    }
+
+    @Test
+    void youtubeWatchUrlWithRealPlaylistUsesCanonicalPlaylistUrl() {
+        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(""));
+
+        adapter.resolve(
+                "https://www.youtube.com/watch?v=fFFzj46lx7s&list=PLUZmdQJkcDxgt1weN69Kaa-1efoWBd3Ld", requester);
+
+        assertThat(ytDlpCommands).hasSize(1);
+        assertThat(ytDlpCommands.get(0))
+                .contains("https://www.youtube.com/playlist?list=PLUZmdQJkcDxgt1weN69Kaa-1efoWBd3Ld");
     }
 
     @Test
     void ytDlpIsSkippedForSoundcloudUrls() {
-        adapter = new LavaplayerResolverAdapter(manager, registry, metadata, ytDlp(YTDLP_JSON));
+        adapter = ytDlpAdapter(ytDlp(YTDLP_JSON));
         stubLoad(handler -> handler.trackLoaded(audioTrack("sc1", "SoundCloud track")));
 
         ResolverResult result = adapter.resolve("https://soundcloud.com/artist/track", requester);
@@ -390,9 +524,36 @@ class LavaplayerResolverAdapterTest {
     }
 
     @Test
+    void clearCacheRemovesDownloadedFilesButKeepsDirectories() throws IOException {
+        Path file = Files.writeString(tempDir.resolve("track.webm"), "audio");
+        Path directory = Files.createDirectory(tempDir.resolve("sub"));
+        adapter = ytDlpAdapter(ytDlp(YTDLP_JSON));
+
+        adapter.clearCache();
+
+        assertThat(file).doesNotExist();
+        assertThat(directory).exists();
+    }
+
+    @Test
+    void clearCacheIgnoresMissingDirectory() {
+        adapter = new LavaplayerResolverAdapter(
+                manager, registry, metadata, LavaplayerResolverAdapter.DEFAULT_TIMEOUT,
+                YtDlpResolver.disabled(), tempDir.resolve("nao-existe"));
+
+        adapter.clearCache();
+
+        assertThat(tempDir.resolve("nao-existe")).doesNotExist();
+    }
+
+    @Test
     void playlistQueryDetection() {
         assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://www.youtube.com/playlist?list=PL1")).isTrue();
-        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://www.youtube.com/watch?v=x&list=RDx")).isTrue();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://www.youtube.com/watch?v=x&list=PL1")).isTrue();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://www.youtube.com/watch?v=x&list=RDx")).isFalse();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://www.youtube.com/watch?list=RDx")).isFalse();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://www.youtube.com/watch?v=Yjfo2vzYVno&list=RDYjfo2vzYVno&start_radio=1")).isFalse();
+        assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://www.youtube.com/watch?v=fFFzj46lx7s&list=PLUZmdQJkcDxgt1weN69Kaa-1efoWBd3Ld")).isTrue();
         assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://soundcloud.com/a/sets/my-set")).isTrue();
         assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://open.spotify.com/album/abc")).isTrue();
         assertThat(LavaplayerResolverAdapter.isPlaylistQuery("https://youtu.be/abc")).isFalse();

@@ -32,6 +32,8 @@ public final class CommandMapper {
         return switch (event.getName()) {
             case "play" -> Optional.of(
                     new BotCommand.PlayCmd(guildId, requester, voiceChannelOf(event), queryOf(event)));
+            case "join" -> Optional.of(new BotCommand.JoinCmd(guildId, userId, voiceChannelOf(event)));
+            case "leave" -> Optional.of(new BotCommand.LeaveCmd(guildId, userId));
             case "stop" -> Optional.of(new BotCommand.StopCmd(guildId, userId));
             case "resume" -> Optional.of(new BotCommand.ResumeCmd(guildId, userId));
             case "skip" -> Optional.of(new BotCommand.SkipCmd(guildId, userId));

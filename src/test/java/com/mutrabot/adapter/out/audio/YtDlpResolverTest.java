@@ -1,7 +1,12 @@
 package com.mutrabot.adapter.out.audio;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -96,6 +101,46 @@ class YtDlpResolverTest {
     }
 
     @Test
+    void parsesPlaylistEntriesFromMultipleLines() {
+        String first = "{\"id\":\"a\",\"title\":\"A\",\"url\":\"https://x/a\",\"webpage_url\":\"https://y/a\"}";
+        String second = "{\"id\":\"b\",\"title\":\"B\",\"url\":\"https://x/b\",\"webpage_url\":\"https://y/b\"}";
+        YtDlpResolver resolver = availableResolver(first + "\n" + second + "\n");
+
+        List<YtDlpMedia> media = resolver.resolvePlaylist("https://www.youtube.com/playlist?list=PL1", 100);
+
+        assertThat(media).extracting(YtDlpMedia::id).containsExactly("a", "b");
+        List<String> playlistCommand = commands.get(0);
+        assertThat(playlistCommand).contains("-j", "--yes-playlist", "--playlist-end", "100");
+        assertThat(playlistCommand.get(playlistCommand.size() - 1))
+                .isEqualTo("https://www.youtube.com/playlist?list=PL1");
+    }
+
+    @Test
+    void playlistSkipsLinesYtDlpCouldNotExtract() {
+        String valid = "{\"id\":\"a\",\"title\":\"A\",\"url\":\"https://x/a\"}";
+        YtDlpResolver resolver = availableResolver("WARNING: nope\n" + valid + "\nnot json");
+
+        List<YtDlpMedia> media = resolver.resolvePlaylist("https://www.youtube.com/playlist?list=PL1", 50);
+
+        assertThat(media).extracting(YtDlpMedia::id).containsExactly("a");
+    }
+
+    @Test
+    void playlistReturnsEmptyForBlankInputDisabledResolverOrFailure() {
+        YtDlpResolver failing = new YtDlpResolver(
+                runner(command -> new YtDlpResolver.CommandRunner.Result(1, "", "erro")),
+                List.of("yt-dlp"),
+                List.of());
+        YtDlpResolver disabled = YtDlpResolver.disabled();
+
+        assertThat(availableResolver("").resolvePlaylist("https://x", 10)).isEmpty();
+        assertThat(availableResolver(MEDIA_JSON).resolvePlaylist(null, 10)).isEmpty();
+        assertThat(availableResolver(MEDIA_JSON).resolvePlaylist("https://x", 0)).isEmpty();
+        assertThat(failing.resolvePlaylist("https://x", 10)).isEmpty();
+        assertThat(disabled.resolvePlaylist("https://x", 10)).isEmpty();
+    }
+
+    @Test
     void liveStreamsHaveUnknownDuration() {
         YtDlpResolver resolver = availableResolver(
                 "{\"id\":\"live\",\"title\":\"Ao vivo\",\"duration\":0,\"url\":\"https://x/y\",\"is_live\":true}");
@@ -159,5 +204,125 @@ class YtDlpResolverTest {
         }, "C:/tools/yt-dlp.exe");
 
         assertThat(resolver.available()).isTrue();
+    }
+
+    @TempDir
+    Path tempDir;
+
+    private YtDlpResolver downloadResolver(Function<List<String>, YtDlpResolver.CommandRunner.Result> handler) {
+        return new YtDlpResolver(runner(handler), List.of("yt-dlp"), List.of("--js-runtimes", "node"));
+    }
+
+    private Path writeDownloadedFile(List<String> command, String extension) {
+        Path template = Path.of(command.get(command.indexOf("-o") + 1));
+        Path file = template.getParent().resolve(
+                template.getFileName().toString().replace("%(ext)s", extension));
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, "audio");
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return file;
+    }
+
+    @Test
+    void downloadUsesChunkedRequestsAndReturnsProducedFile() {
+        YtDlpResolver resolver = downloadResolver(command -> {
+            writeDownloadedFile(command, "webm");
+            return new YtDlpResolver.CommandRunner.Result(0, "", "");
+        });
+
+        Optional<Path> file = resolver.download(
+                "https://stream.example/audio", tempDir.resolve("nested"), "abc");
+
+        assertThat(file).isPresent();
+        assertThat(file.get().getFileName().toString()).isEqualTo("abc.webm");
+        assertThat(file.get().getParent().getFileName().toString()).isEqualTo("nested");
+        assertThat(commands.get(0))
+                .contains("--http-chunk-size", "10M", "--no-playlist", "--js-runtimes", "node");
+        assertThat(commands.get(0).get(commands.get(0).size() - 1))
+                .isEqualTo("https://stream.example/audio");
+    }
+
+    @Test
+    void downloadReturnsEmptyAndCleansPartialFileWhenProcessFails() {
+        YtDlpResolver resolver = downloadResolver(command -> {
+            writeDownloadedFile(command, "webm.part");
+            return new YtDlpResolver.CommandRunner.Result(1, "", "erro");
+        });
+
+        Optional<Path> file = resolver.download("https://stream.example/audio", tempDir, "abc");
+
+        assertThat(file).isEmpty();
+        assertThat(tempDir.resolve("abc.webm.part")).doesNotExist();
+    }
+
+    @Test
+    void downloadIgnoresPartialFilesAndCleansThem() throws IOException {
+        Path busy = Files.createDirectories(tempDir.resolve("abc.busy"));
+        Files.writeString(busy.resolve("child"), "x");
+        Files.writeString(tempDir.resolve("other.txt"), "x");
+        YtDlpResolver resolver = downloadResolver(command -> {
+            writeDownloadedFile(command, "webm.part");
+            return new YtDlpResolver.CommandRunner.Result(0, "", "");
+        });
+
+        Optional<Path> file = resolver.download("https://stream.example/audio", tempDir, "abc");
+
+        assertThat(file).isEmpty();
+        assertThat(tempDir.resolve("abc.webm.part")).doesNotExist();
+        assertThat(busy).exists();
+        assertThat(tempDir.resolve("other.txt")).exists();
+    }
+
+    @Test
+    void downloadPrefersFinalFileOverPartial() {
+        YtDlpResolver resolver = downloadResolver(command -> {
+            writeDownloadedFile(command, "webm.part");
+            writeDownloadedFile(command, "webm");
+            return new YtDlpResolver.CommandRunner.Result(0, "", "");
+        });
+
+        Optional<Path> file = resolver.download("https://stream.example/audio", tempDir, "abc");
+
+        assertThat(file).isPresent();
+        assertThat(file.get().getFileName().toString()).isEqualTo("abc.webm");
+    }
+
+    @Test
+    void downloadReturnsEmptyWhenRunnerThrows() {
+        YtDlpResolver resolver = new YtDlpResolver(runner(command -> {
+            throw new IllegalStateException("sem processo");
+        }), List.of("yt-dlp"), List.of());
+
+        assertThat(resolver.download("https://stream.example/audio", tempDir, "abc")).isEmpty();
+    }
+
+    @Test
+    void downloadReturnsEmptyWhenDisabledOrUrlBlank() {
+        YtDlpResolver resolver = availableResolver(MEDIA_JSON);
+
+        assertThat(YtDlpResolver.disabled().download("https://s", tempDir, "abc")).isEmpty();
+        assertThat(resolver.download(null, tempDir, "abc")).isEmpty();
+        assertThat(resolver.download("   ", tempDir, "abc")).isEmpty();
+        assertThat(commands).isEmpty();
+    }
+
+    @Test
+    void downloadReturnsEmptyWhenDirectoryIsUnusable() throws IOException {
+        Path notDirectory = Files.writeString(tempDir.resolve("arquivo.txt"), "x");
+        YtDlpResolver resolver = downloadResolver(command ->
+                new YtDlpResolver.CommandRunner.Result(0, "", ""));
+
+        assertThat(resolver.download("https://stream.example/audio", notDirectory, "abc")).isEmpty();
+    }
+
+    @Test
+    void safeFileBaseNameSanitizesAndFallsBack() {
+        assertThat(YtDlpResolver.safeFileBaseName(null)).isEqualTo("track");
+        assertThat(YtDlpResolver.safeFileBaseName("")).isEqualTo("track");
+        assertThat(YtDlpResolver.safeFileBaseName("a/b:c?d")).isEqualTo("a_b_c_d");
+        assertThat(YtDlpResolver.safeFileBaseName("x".repeat(200))).hasSize(120);
     }
 }

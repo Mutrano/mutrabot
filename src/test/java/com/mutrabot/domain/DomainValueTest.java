@@ -145,6 +145,16 @@ class DomainValueTest {
     }
 
     @Test
+    void livestreamJoinCommandNormalizesNullWindow() {
+        BotCommand.LivestreamJoinCmd join = new BotCommand.LivestreamJoinCmd(
+                TestData.GUILD, TestData.USER, new VoiceChannelId("7"), null);
+
+        assertThat(join.window()).isEmpty();
+        assertThat(join.voiceChannel().value()).isEqualTo("7");
+        assertThat(new BotCommand.LivestreamLeaveCmd(TestData.GUILD, TestData.USER).user()).isEqualTo(TestData.USER);
+    }
+
+    @Test
     void botCommandsCarryTheirContext() {
         assertThat(new BotCommand.StopCmd(TestData.GUILD, TestData.USER).guild()).isEqualTo(TestData.GUILD);
         assertThat(new BotCommand.ResumeCmd(TestData.GUILD, TestData.USER).user()).isEqualTo(TestData.USER);

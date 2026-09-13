@@ -1,0 +1,14 @@
+{
+  "name": "mutrabot-livestream-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sidecar Node que faz Go Live de uma janela do computador usando uma conta de usuário (self-bot) a pedido do mutrabot.",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@dank074/discord-video-stream": "^6.0.0",
+    "discord.js-selfbot-v13": "latest"
+  }
+}

@@ -47,6 +47,12 @@ class CommandMapperTest {
         when(option.getAsString()).thenReturn(value);
     }
 
+    private void stubWindow(String value) {
+        OptionMapping option = mock(OptionMapping.class);
+        when(event.getOption("janela")).thenReturn(option);
+        when(option.getAsString()).thenReturn(value);
+    }
+
     @Test
     void mapsPlayWithQueryAndVoiceChannel() {
         stubCommon("play");
@@ -140,5 +146,50 @@ class CommandMapperTest {
         BotCommand.PlayCmd play = (BotCommand.PlayCmd) CommandMapper.map(event).orElseThrow();
 
         assertThat(play.query()).isEmpty();
+    }
+
+    @Test
+    void mapsLivestreamJoinWithWindowAndVoiceChannel() {
+        stubCommon("livestream-join");
+        stubVoice();
+        stubWindow("Notepad");
+
+        BotCommand.LivestreamJoinCmd join =
+                (BotCommand.LivestreamJoinCmd) CommandMapper.map(event).orElseThrow();
+
+        assertThat(join.guild().value()).isEqualTo("100");
+        assertThat(join.user().value()).isEqualTo("42");
+        assertThat(join.voiceChannel().value()).isEqualTo("777");
+        assertThat(join.window()).isEqualTo("Notepad");
+    }
+
+    @Test
+    void mapsLivestreamLeave() {
+        stubCommon("livestream-leave");
+
+        assertThat(CommandMapper.map(event)).containsInstanceOf(BotCommand.LivestreamLeaveCmd.class);
+    }
+
+    @Test
+    void livestreamJoinWithoutVoiceYieldsNullVoiceChannel() {
+        stubCommon("livestream-join");
+        stubWindow("Notepad");
+        when(event.getMember()).thenReturn(null);
+
+        BotCommand.LivestreamJoinCmd join =
+                (BotCommand.LivestreamJoinCmd) CommandMapper.map(event).orElseThrow();
+
+        assertThat(join.voiceChannel()).isNull();
+    }
+
+    @Test
+    void missingWindowOptionYieldsEmptyString() {
+        stubCommon("livestream-join");
+        when(event.getOption("janela")).thenReturn(null);
+
+        BotCommand.LivestreamJoinCmd join =
+                (BotCommand.LivestreamJoinCmd) CommandMapper.map(event).orElseThrow();
+
+        assertThat(join.window()).isEmpty();
     }
 }

@@ -54,6 +54,29 @@ O hook `pre-push` roda gitleaks nos commits que estão sendo enviados e bloqueia
 
 As respostas são em português. Qualquer membro que possa enviar mensagens usa todos os comandos.
 
+## Livestream (transmissão de tela)
+
+Dois comandos restritos ao dono (`LIVESTREAM_OWNER_ID`) transmitem uma janela do computador como "Go Live" numa conta de usuário separada (self-bot, chamada Y). O Discord bloqueia vídeo de contas de bot, por isso a transmissão sai de uma conta de usuário.
+
+> ⚠️ Self-bot viola o ToS do Discord e pode banir a conta. Use **somente uma conta burner**, nunca a principal.
+
+- `/livestream-join <janela>`: a conta Y entra no mesmo canal de voz do dono e transmite a janela pelo título; use `desktop` para a tela inteira. Sem áudio.
+- `/livestream-leave`: encerra a transmissão e faz Y sair do canal.
+
+Pré-requisitos: Node.js 20+, FFmpeg no PATH (captura via `gdigrab` no Windows) e a conta Y na guild com permissão de Conectar, Falar e Transmitir. O bot sobe e encerra o sidecar em `streamer/` automaticamente; na primeira vez rode `cd streamer; npm install`.
+
+Variáveis no `.env`:
+
+```dotenv
+LIVESTREAM_OWNER_ID=seu-user-id
+LIVESTREAM_USER_TOKEN=token-da-conta-burner
+LIVESTREAM_SIDECAR_SECRET=um-segredo-local-qualquer
+LIVESTREAM_SIDECAR_PORT=8790
+# LIVESTREAM_FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
+```
+
+Sem essas variáveis a feature fica desabilitada e o bot de música continua normal. Detalhes de planejamento em `specs/002-livestream-selfbot/`.
+
 ## YouTube
 
 Vídeos comuns tocam direto pelo `youtube-source`. Alguns vídeos que o YouTube marca com "requires login" (conteúdo restrito ou bloqueio anti-bot) falham nesse extrator. Para esses casos o bot usa o `yt-dlp` como resolvedor preferido quando ele está instalado:

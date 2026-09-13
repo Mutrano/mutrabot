@@ -180,4 +180,54 @@ public final class BotMessages {
             case HTTP -> "link";
         };
     }
+
+    public static String ownerOnly() {
+        return "🚫 Só o dono pode usar este comando.";
+    }
+
+    public static String livestreamDisabled() {
+        return "ℹ️ A transmissão não está configurada neste bot.";
+    }
+
+    public static String livestreamWindowRequired() {
+        return "✏️ Informe o título da janela ou 'desktop' para a tela inteira.";
+    }
+
+    public static String livestreamStarted(String window) {
+        String target = isDesktop(window) ? "a tela inteira" : "**" + window + "**";
+        return "🔴 Live iniciada: transmitindo " + target + " no canal de voz. Use /livestream-leave para encerrar.";
+    }
+
+    public static String livestreamStopped() {
+        return "⏹ Live encerrada e a conta saiu do canal de voz.";
+    }
+
+    public static String livestreamNoneActive() {
+        return "ℹ️ Não há nenhuma live ativa no momento.";
+    }
+
+    public static String livestreamWindowNotFound(String window) {
+        return "🪟 Não encontrei uma janela \"" + window + "\". Confira o título ou use `desktop` para a tela inteira.";
+    }
+
+    public static String livestreamTransmitterUnavailable() {
+        return "⚠️ A conta de transmissão não está disponível. Verifique o convite e o token (LIVESTREAM_USER_TOKEN).";
+    }
+
+    public static String livestreamCaptureFailed(String reason) {
+        return "⚠️ Não consegui iniciar a captura: " + reason
+                + ". Confira o FFmpeg e as dependências do sidecar.";
+    }
+
+    public static String livestreamServiceDown() {
+        return "📡 O serviço de transmissão está fora do ar. A música segue normal; tente de novo em instantes.";
+    }
+
+    public static String livestreamFailed(String reason) {
+        return "⚠️ Não consegui iniciar a transmissão: " + reason + ".";
+    }
+
+    static boolean isDesktop(String window) {
+        return window != null && window.equalsIgnoreCase("desktop");
+    }
 }

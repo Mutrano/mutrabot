@@ -38,12 +38,19 @@ public final class CommandMapper {
             case "queue" -> Optional.of(new BotCommand.QueueCmd(guildId, userId));
             case "ping" -> Optional.of(new BotCommand.PingCmd());
             case "help" -> Optional.of(new BotCommand.HelpCmd());
+            case "livestream-join" -> Optional.of(new BotCommand.LivestreamJoinCmd(
+                    guildId, userId, voiceChannelOf(event), optionOf(event, "janela")));
+            case "livestream-leave" -> Optional.of(new BotCommand.LivestreamLeaveCmd(guildId, userId));
             default -> Optional.empty();
         };
     }
 
     static String queryOf(SlashCommandInteractionEvent event) {
-        OptionMapping option = event.getOption("query");
+        return optionOf(event, "query");
+    }
+
+    static String optionOf(SlashCommandInteractionEvent event, String name) {
+        OptionMapping option = event.getOption(name);
         return option == null ? "" : option.getAsString();
     }
 

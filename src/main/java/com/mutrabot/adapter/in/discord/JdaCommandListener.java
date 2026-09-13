@@ -2,6 +2,8 @@ package com.mutrabot.adapter.in.discord;
 
 import com.mutrabot.application.port.in.HelpUseCase;
 import com.mutrabot.application.port.in.ListQueueUseCase;
+import com.mutrabot.application.port.in.LivestreamJoinUseCase;
+import com.mutrabot.application.port.in.LivestreamLeaveUseCase;
 import com.mutrabot.application.port.in.PingUseCase;
 import com.mutrabot.application.port.in.PlayUseCase;
 import com.mutrabot.application.port.in.ResumeUseCase;
@@ -29,6 +31,8 @@ public final class JdaCommandListener extends ListenerAdapter {
     private final ListQueueUseCase listQueueUseCase;
     private final PingUseCase pingUseCase;
     private final HelpUseCase helpUseCase;
+    private final LivestreamJoinUseCase livestreamJoinUseCase;
+    private final LivestreamLeaveUseCase livestreamLeaveUseCase;
     private final JdaAnnouncer announcer;
 
     public JdaCommandListener(
@@ -40,6 +44,8 @@ public final class JdaCommandListener extends ListenerAdapter {
             ListQueueUseCase listQueueUseCase,
             PingUseCase pingUseCase,
             HelpUseCase helpUseCase,
+            LivestreamJoinUseCase livestreamJoinUseCase,
+            LivestreamLeaveUseCase livestreamLeaveUseCase,
             JdaAnnouncer announcer) {
         this.executor = Objects.requireNonNull(executor, "executor");
         this.playUseCase = Objects.requireNonNull(playUseCase, "playUseCase");
@@ -49,6 +55,8 @@ public final class JdaCommandListener extends ListenerAdapter {
         this.listQueueUseCase = Objects.requireNonNull(listQueueUseCase, "listQueueUseCase");
         this.pingUseCase = Objects.requireNonNull(pingUseCase, "pingUseCase");
         this.helpUseCase = Objects.requireNonNull(helpUseCase, "helpUseCase");
+        this.livestreamJoinUseCase = Objects.requireNonNull(livestreamJoinUseCase, "livestreamJoinUseCase");
+        this.livestreamLeaveUseCase = Objects.requireNonNull(livestreamLeaveUseCase, "livestreamLeaveUseCase");
         this.announcer = Objects.requireNonNull(announcer, "announcer");
     }
 
@@ -64,7 +72,7 @@ public final class JdaCommandListener extends ListenerAdapter {
         if (guild != null) {
             announcer.register(new GuildId(guild.getId()), event.getChannel());
         }
-        if (command instanceof BotCommand.PlayCmd) {
+        if (command instanceof BotCommand.PlayCmd || command instanceof BotCommand.LivestreamJoinCmd) {
             event.deferReply().queue();
         }
         InteractionResponderPort responder = new JdaResponderAdapter(event);
@@ -80,6 +88,8 @@ public final class JdaCommandListener extends ListenerAdapter {
             case BotCommand.QueueCmd queue -> listQueueUseCase.list(queue, responder);
             case BotCommand.PingCmd ping -> pingUseCase.ping(ping, responder);
             case BotCommand.HelpCmd help -> helpUseCase.help(help, responder);
+            case BotCommand.LivestreamJoinCmd join -> livestreamJoinUseCase.join(join, responder);
+            case BotCommand.LivestreamLeaveCmd leave -> livestreamLeaveUseCase.leave(leave, responder);
         }
     }
 }

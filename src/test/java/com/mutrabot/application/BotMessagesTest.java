@@ -149,6 +149,25 @@ class BotMessagesTest {
         assertThat(view).isEqualTo("🎵 Tocando agora: Atual — pedido por Ana [2:05]");
     }
 
+    @Test
+    void livestreamMessagesMatchContract() {
+        assertThat(BotMessages.ownerOnly()).isEqualTo("🚫 Só o dono pode usar este comando.");
+        assertThat(BotMessages.livestreamDisabled()).isNotBlank();
+        assertThat(BotMessages.livestreamWindowRequired()).isNotBlank();
+        assertThat(BotMessages.livestreamStarted("Notepad")).isEqualTo(
+                "🔴 Live iniciada: transmitindo **Notepad** no canal de voz. Use /livestream-leave para encerrar.");
+        assertThat(BotMessages.livestreamStarted("DESKTOP")).isEqualTo(
+                "🔴 Live iniciada: transmitindo a tela inteira no canal de voz. Use /livestream-leave para encerrar.");
+        assertThat(BotMessages.livestreamStarted(null)).contains("null");
+        assertThat(BotMessages.livestreamStopped()).isNotBlank();
+        assertThat(BotMessages.livestreamNoneActive()).isNotBlank();
+        assertThat(BotMessages.livestreamWindowNotFound("X")).contains("X");
+        assertThat(BotMessages.livestreamTransmitterUnavailable()).isNotBlank();
+        assertThat(BotMessages.livestreamCaptureFailed("boom")).contains("boom");
+        assertThat(BotMessages.livestreamServiceDown()).isNotBlank();
+        assertThat(BotMessages.livestreamFailed("boom")).contains("boom");
+    }
+
     private Track trackWithDuration(Duration duration) {
         return new Track(
                 new com.mutrabot.domain.model.TrackId("t"),

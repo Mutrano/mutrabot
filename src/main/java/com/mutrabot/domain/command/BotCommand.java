@@ -31,4 +31,14 @@ public sealed interface BotCommand {
 
     record HelpCmd() implements BotCommand {
     }
+
+    record LivestreamJoinCmd(GuildId guild, UserId user, VoiceChannelId voiceChannel, String window)
+            implements BotCommand {
+        public LivestreamJoinCmd {
+            window = window == null ? "" : window;
+        }
+    }
+
+    record LivestreamLeaveCmd(GuildId guild, UserId user) implements BotCommand {
+    }
 }

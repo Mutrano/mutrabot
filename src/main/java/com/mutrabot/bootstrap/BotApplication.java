@@ -9,9 +9,14 @@ import com.mutrabot.adapter.out.audio.TrackAudioRegistry;
 import com.mutrabot.adapter.out.audio.YtDlpProcessRunner;
 import com.mutrabot.adapter.out.audio.YtDlpResolver;
 import com.mutrabot.adapter.out.persistence.InMemoryQueueAdapter;
+import com.mutrabot.adapter.out.streaming.HttpLivestreamSidecarAdapter;
+import com.mutrabot.application.port.out.LivestreamControlPort;
 import com.mutrabot.application.service.HelpCommandService;
 import com.mutrabot.application.service.IdleDisconnectService;
 import com.mutrabot.application.service.ListQueueService;
+import com.mutrabot.application.service.LivestreamJoinService;
+import com.mutrabot.application.service.LivestreamLeaveService;
+import com.mutrabot.application.service.OwnerPolicy;
 import com.mutrabot.application.service.PingCommandService;
 import com.mutrabot.application.service.PlaybackFailureService;
 import com.mutrabot.application.service.PlayCommandService;
@@ -77,6 +82,21 @@ public final class BotApplication {
                 jda::getGatewayPing, () -> jda.getRestPing().complete());
         HelpCommandService help = new HelpCommandService();
 
+        int sidecarPort = parsePort(dotEnv.get("LIVESTREAM_SIDECAR_PORT"));
+        String sidecarSecret = dotEnv.get("LIVESTREAM_SIDECAR_SECRET");
+        LivestreamSidecarProcess.start(
+                        sidecarPort,
+                        sidecarSecret,
+                        dotEnv.get("LIVESTREAM_USER_TOKEN"),
+                        dotEnv.get("LIVESTREAM_FFMPEG_PATH"))
+                .ifPresent(process -> Runtime.getRuntime()
+                        .addShutdownHook(new Thread(process::close, "livestream-sidecar")));
+        OwnerPolicy ownerPolicy = OwnerPolicy.from(dotEnv.get("LIVESTREAM_OWNER_ID"));
+        LivestreamControlPort livestreamControl = new HttpLivestreamSidecarAdapter(
+                "http://127.0.0.1:" + sidecarPort, sidecarSecret == null ? "" : sidecarSecret);
+        LivestreamJoinService livestreamJoin = new LivestreamJoinService(ownerPolicy, livestreamControl);
+        LivestreamLeaveService livestreamLeave = new LivestreamLeaveService(ownerPolicy, livestreamControl);
+
         TrackFinishedService trackFinished = new TrackFinishedService(queues, playback, announcer, idleDisconnect);
         playback.setTrackFinishedListener(trackFinished::onTrackFinished);
 
@@ -85,9 +105,21 @@ public final class BotApplication {
         playback.setTrackFailureListener(playbackFailure::onTrackFailed);
 
         JdaCommandListener listener = new JdaCommandListener(
-                ExecutorConfig.commandExecutor(), play, stop, resume, skip, listQueue, ping, help, announcer);
+                ExecutorConfig.commandExecutor(), play, stop, resume, skip, listQueue, ping, help,
+                livestreamJoin, livestreamLeave, announcer);
         jda.addEventListener(listener);
         registerCommands(jda, dotEnv.get("DISCORD_GUILD_ID"));
+    }
+
+    static int parsePort(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return 8790;
+        }
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return 8790;
+        }
     }
 
     static void registerCommands(JDA jda, String devGuildId) {
@@ -99,7 +131,11 @@ public final class BotApplication {
                 Commands.slash("skip", "Pula para a próxima faixa da fila"),
                 Commands.slash("queue", "Mostra a fila de reprodução"),
                 Commands.slash("ping", "Verifica se o bot está online"),
-                Commands.slash("help", "Mostra os comandos disponíveis"));
+                Commands.slash("help", "Mostra os comandos disponíveis"),
+                Commands.slash("livestream-join", "Transmite uma janela do computador (só o dono)")
+                        .addOptions(new OptionData(OptionType.STRING, "janela",
+                                "Título da janela ou 'desktop' para a tela inteira", true)),
+                Commands.slash("livestream-leave", "Encerra a transmissão (só o dono)"));
         if (devGuildId != null && !devGuildId.isBlank()) {
             Guild guild = jda.getGuildById(devGuildId);
             if (guild != null) {

@@ -21,6 +21,8 @@ class HelpCommandServiceTest {
         assertThat(message).isEqualTo(BotMessages.help());
         assertThat(message)
                 .contains("/play")
+                .contains("/join")
+                .contains("/leave")
                 .contains("/stop")
                 .contains("/resume")
                 .contains("/skip")

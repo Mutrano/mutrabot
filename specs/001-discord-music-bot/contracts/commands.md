@@ -24,6 +24,25 @@ Aceita link de faixa (YouTube/SoundCloud/Spotify/Tidal), link de playlist ou tex
 | Link inválido/privado/restrito/fonte fora do ar | `⚠️ Não consegui carregar "{query}": {motivo}. A fila atual foi mantida.` |
 | Usuário sem canal de voz e sem sessão alvo | `🔇 Entre em um canal de voz primeiro e tente de novo.` |
 
+### /join — FR-013
+
+Entra no canal de voz do usuário. Sem opções.
+
+| Caso | Resposta (PT-BR) |
+|------|------------------|
+| Conectado (também cancela timer de ociosidade) | `🔊 Entrei no canal de voz.` |
+| Já conectado no mesmo canal | `ℹ️ Já estou no seu canal de voz.` (efêmera) |
+| Usuário sem canal de voz | `🔇 Entre em um canal de voz primeiro e tente de novo.` (efêmera) |
+
+### /leave — FR-015 (saída manual)
+
+Sai do canal de voz e limpa a fila. Sem opções.
+
+| Caso | Resposta (PT-BR) |
+|------|------------------|
+| Conectado → desconecta e limpa | `👋 Saí do canal de voz e limpei a fila.` |
+| Não conectado | `ℹ️ Não estou em um canal de voz.` (efêmera) |
+
 ### /stop — FR-007 (apenas pausa)
 
 | Estado | Resposta |
@@ -73,7 +92,7 @@ Resposta: `🏓 pong` (podendo incluir `gateway: {n}ms`).
 ## Ports hexagonais correspondentes
 
 ```
-adapter/in/discord JdaCommandListener --BotCommand--> application.port.in (PlayUseCase, StopUseCase, ResumeUseCase, SkipUseCase, ListQueueUseCase, PingUseCase)
+adapter/in/discord JdaCommandListener --BotCommand--> application.port.in (PlayUseCase, JoinUseCase, LeaveUseCase, StopUseCase, ResumeUseCase, SkipUseCase, ListQueueUseCase, PingUseCase, HelpUseCase)
 application.service --ResolverResult--> TrackResolverPort (adapter/out/audio LavaplayerResolverAdapter)
 application.service --play/pause/resume/stop--> AudioPlaybackPort (adapter/out/audio LavaplayerPlaybackAdapter)
 application.service --load/save--> MusicQueueRepository (adapter/out/persistence InMemoryQueueAdapter)

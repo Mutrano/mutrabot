@@ -14,6 +14,12 @@ public sealed interface BotCommand {
         }
     }
 
+    record JoinCmd(GuildId guild, UserId user, VoiceChannelId voiceChannel) implements BotCommand {
+    }
+
+    record LeaveCmd(GuildId guild, UserId user) implements BotCommand {
+    }
+
     record StopCmd(GuildId guild, UserId user) implements BotCommand {
     }
 

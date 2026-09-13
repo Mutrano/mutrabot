@@ -64,9 +64,33 @@ class CommandMapperTest {
     }
 
     @Test
+    void mapsJoinWithVoiceChannel() {
+        stubCommon("join");
+        stubVoice();
+
+        BotCommand.JoinCmd join = (BotCommand.JoinCmd) CommandMapper.map(event).orElseThrow();
+
+        assertThat(join.guild().value()).isEqualTo("100");
+        assertThat(join.user().value()).isEqualTo("42");
+        assertThat(join.voiceChannel().value()).isEqualTo("777");
+    }
+
+    @Test
+    void joinWithoutVoiceChannelYieldsNullChannel() {
+        stubCommon("join");
+        when(event.getMember()).thenReturn(null);
+
+        BotCommand.JoinCmd join = (BotCommand.JoinCmd) CommandMapper.map(event).orElseThrow();
+
+        assertThat(join.voiceChannel()).isNull();
+    }
+
+    @Test
     void mapsControlCommands() {
         stubCommon("stop");
         assertThat(CommandMapper.map(event)).containsInstanceOf(BotCommand.StopCmd.class);
+        stubCommon("leave");
+        assertThat(CommandMapper.map(event)).containsInstanceOf(BotCommand.LeaveCmd.class);
         stubCommon("resume");
         assertThat(CommandMapper.map(event)).containsInstanceOf(BotCommand.ResumeCmd.class);
         stubCommon("skip");

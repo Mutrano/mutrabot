@@ -46,6 +46,8 @@ O hook `pre-push` roda gitleaks nos commits que estão sendo enviados e bloqueia
 ## Comandos
 
 - `/play <link ou nome>`: toca um link de faixa (YouTube, SoundCloud), um termo de busca ou um link de playlist. Spotify e Tidal são resolvidos por metadados e tocados pela melhor correspondência no YouTube.
+- `/join`: entra no canal de voz em que você está.
+- `/leave`: sai do canal de voz e limpa a fila.
 - `/stop`: pausa a faixa atual e mantém a fila.
 - `/resume`: retoma do ponto onde parou.
 - `/skip`: encerra a faixa atual e inicia a próxima; com a fila vazia, anuncia o fim e desconecta após 5 minutos ociosos.

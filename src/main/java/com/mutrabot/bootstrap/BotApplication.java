@@ -11,6 +11,8 @@ import com.mutrabot.adapter.out.audio.YtDlpResolver;
 import com.mutrabot.adapter.out.persistence.InMemoryQueueAdapter;
 import com.mutrabot.application.service.HelpCommandService;
 import com.mutrabot.application.service.IdleDisconnectService;
+import com.mutrabot.application.service.JoinCommandService;
+import com.mutrabot.application.service.LeaveCommandService;
 import com.mutrabot.application.service.ListQueueService;
 import com.mutrabot.application.service.PingCommandService;
 import com.mutrabot.application.service.PlaybackFailureService;
@@ -63,6 +65,8 @@ public final class BotApplication {
                 ExecutorConfig.idleScheduler(), queues, playback, announcer);
 
         PlayCommandService play = new PlayCommandService(resolver, playback, queues, idleDisconnect);
+        JoinCommandService join = new JoinCommandService(playback, idleDisconnect);
+        LeaveCommandService leave = new LeaveCommandService(queues, playback, idleDisconnect);
         StopCommandService stop = new StopCommandService(queues, playback);
         ResumeCommandService resume = new ResumeCommandService(queues, playback);
         SkipCommandService skip = new SkipCommandService(queues, playback, idleDisconnect);
@@ -79,7 +83,8 @@ public final class BotApplication {
         playback.setTrackFailureListener(playbackFailure::onTrackFailed);
 
         JdaCommandListener listener = new JdaCommandListener(
-                ExecutorConfig.commandExecutor(), play, stop, resume, skip, listQueue, ping, help, announcer);
+                ExecutorConfig.commandExecutor(), play, join, leave, stop, resume, skip, listQueue, ping, help,
+                announcer);
         jda.addEventListener(listener);
         registerCommands(jda, dotEnv.get("DISCORD_GUILD_ID"));
     }
@@ -88,6 +93,8 @@ public final class BotApplication {
         List<CommandData> commands = List.of(
                 Commands.slash("play", "Toca uma música por link, busca ou playlist")
                         .addOptions(new OptionData(OptionType.STRING, "query", "Link ou nome da música", true)),
+                Commands.slash("join", "Entra no seu canal de voz"),
+                Commands.slash("leave", "Sai do canal de voz e limpa a fila"),
                 Commands.slash("stop", "Pausa a reprodução atual"),
                 Commands.slash("resume", "Retoma a reprodução pausada"),
                 Commands.slash("skip", "Pula para a próxima faixa da fila"),

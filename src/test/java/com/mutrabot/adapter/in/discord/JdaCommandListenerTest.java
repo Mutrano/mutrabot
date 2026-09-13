@@ -1,6 +1,8 @@
 package com.mutrabot.adapter.in.discord;
 
 import com.mutrabot.application.port.in.HelpUseCase;
+import com.mutrabot.application.port.in.JoinUseCase;
+import com.mutrabot.application.port.in.LeaveUseCase;
 import com.mutrabot.application.port.in.ListQueueUseCase;
 import com.mutrabot.application.port.in.PingUseCase;
 import com.mutrabot.application.port.in.PlayUseCase;
@@ -36,6 +38,8 @@ import static org.mockito.Mockito.when;
 class JdaCommandListenerTest {
 
     private final PlayUseCase playUseCase = mock(PlayUseCase.class);
+    private final JoinUseCase joinUseCase = mock(JoinUseCase.class);
+    private final LeaveUseCase leaveUseCase = mock(LeaveUseCase.class);
     private final StopUseCase stopUseCase = mock(StopUseCase.class);
     private final ResumeUseCase resumeUseCase = mock(ResumeUseCase.class);
     private final SkipUseCase skipUseCase = mock(SkipUseCase.class);
@@ -50,7 +54,7 @@ class JdaCommandListenerTest {
     @BeforeEach
     void setUp() {
         listener = new JdaCommandListener(
-                Runnable::run, playUseCase, stopUseCase, resumeUseCase, skipUseCase,
+                Runnable::run, playUseCase, joinUseCase, leaveUseCase, stopUseCase, resumeUseCase, skipUseCase,
                 listQueueUseCase, pingUseCase, helpUseCase, announcer);
     }
 
@@ -58,6 +62,8 @@ class JdaCommandListenerTest {
     void dispatchRoutesEveryCommandType() {
         listener.dispatch(new BotCommand.PlayCmd(
                 TestData.GUILD, TestData.requester("Ana"), new VoiceChannelId("7"), "q"), responder);
+        listener.dispatch(new BotCommand.JoinCmd(TestData.GUILD, TestData.USER, new VoiceChannelId("7")), responder);
+        listener.dispatch(new BotCommand.LeaveCmd(TestData.GUILD, TestData.USER), responder);
         listener.dispatch(new BotCommand.StopCmd(TestData.GUILD, TestData.USER), responder);
         listener.dispatch(new BotCommand.ResumeCmd(TestData.GUILD, TestData.USER), responder);
         listener.dispatch(new BotCommand.SkipCmd(TestData.GUILD, TestData.USER), responder);
@@ -66,6 +72,8 @@ class JdaCommandListenerTest {
         listener.dispatch(new BotCommand.HelpCmd(), responder);
 
         verify(playUseCase).play(any(BotCommand.PlayCmd.class), eq(responder));
+        verify(joinUseCase).join(any(BotCommand.JoinCmd.class), eq(responder));
+        verify(leaveUseCase).leave(any(BotCommand.LeaveCmd.class), eq(responder));
         verify(stopUseCase).stop(any(BotCommand.StopCmd.class), eq(responder));
         verify(resumeUseCase).resume(any(BotCommand.ResumeCmd.class), eq(responder));
         verify(skipUseCase).skip(any(BotCommand.SkipCmd.class), eq(responder));

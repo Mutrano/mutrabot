@@ -1,6 +1,8 @@
 package com.mutrabot.adapter.in.discord;
 
 import com.mutrabot.application.port.in.HelpUseCase;
+import com.mutrabot.application.port.in.JoinUseCase;
+import com.mutrabot.application.port.in.LeaveUseCase;
 import com.mutrabot.application.port.in.ListQueueUseCase;
 import com.mutrabot.application.port.in.PingUseCase;
 import com.mutrabot.application.port.in.PlayUseCase;
@@ -23,6 +25,8 @@ public final class JdaCommandListener extends ListenerAdapter {
 
     private final Executor executor;
     private final PlayUseCase playUseCase;
+    private final JoinUseCase joinUseCase;
+    private final LeaveUseCase leaveUseCase;
     private final StopUseCase stopUseCase;
     private final ResumeUseCase resumeUseCase;
     private final SkipUseCase skipUseCase;
@@ -34,6 +38,8 @@ public final class JdaCommandListener extends ListenerAdapter {
     public JdaCommandListener(
             Executor executor,
             PlayUseCase playUseCase,
+            JoinUseCase joinUseCase,
+            LeaveUseCase leaveUseCase,
             StopUseCase stopUseCase,
             ResumeUseCase resumeUseCase,
             SkipUseCase skipUseCase,
@@ -43,6 +49,8 @@ public final class JdaCommandListener extends ListenerAdapter {
             JdaAnnouncer announcer) {
         this.executor = Objects.requireNonNull(executor, "executor");
         this.playUseCase = Objects.requireNonNull(playUseCase, "playUseCase");
+        this.joinUseCase = Objects.requireNonNull(joinUseCase, "joinUseCase");
+        this.leaveUseCase = Objects.requireNonNull(leaveUseCase, "leaveUseCase");
         this.stopUseCase = Objects.requireNonNull(stopUseCase, "stopUseCase");
         this.resumeUseCase = Objects.requireNonNull(resumeUseCase, "resumeUseCase");
         this.skipUseCase = Objects.requireNonNull(skipUseCase, "skipUseCase");
@@ -74,6 +82,8 @@ public final class JdaCommandListener extends ListenerAdapter {
     void dispatch(BotCommand command, InteractionResponderPort responder) {
         switch (command) {
             case BotCommand.PlayCmd play -> playUseCase.play(play, responder);
+            case BotCommand.JoinCmd join -> joinUseCase.join(join, responder);
+            case BotCommand.LeaveCmd leave -> leaveUseCase.leave(leave, responder);
             case BotCommand.StopCmd stop -> stopUseCase.stop(stop, responder);
             case BotCommand.ResumeCmd resume -> resumeUseCase.resume(resume, responder);
             case BotCommand.SkipCmd skip -> skipUseCase.skip(skip, responder);
